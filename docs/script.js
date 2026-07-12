@@ -10,7 +10,7 @@ async function loadData() {
 
     try {
 
-        const response = await fetch(sheetURL);
+        const response = await fetch(sheetURL + "&cache=" + new Date().getTime());
         const csvText = await response.text();
 
         const rows = csvText.trim().split("\n");
