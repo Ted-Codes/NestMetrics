@@ -4,13 +4,12 @@ const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMDh2FHRk4aiC
 let owlChart;
 let tempChart;
 
-
 // Load data from Google Sheets
 async function loadData() {
 
     try {
 
-        const response = await fetch(sheetURL + "&cache=" + new Date().getTime());
+        const response = await fetch(sheetURL + "&cache=" + Date.now());
         const csvText = await response.text();
 
         const rows = csvText.trim().split("\n");
@@ -19,52 +18,50 @@ async function loadData() {
         const data = rows.map(row => row.split(","));
 
         // Remove header row
-        const headers = data.shift();
+        data.shift();
 
-        // Get newest entry
+        // Get newest row
         const latest = data[data.length - 1];
-
 
         /*
         Columns:
         0 = Timestamp (ignored)
         1 = Time Stamp
         2 = Owl Number
-        3 = Temperature (Degrees)
+        3 = Temperature
         4 = Weather
         */
 
-
-        const time = latest[1];
-        const owlNumber = latest[2];
-        const temperature = latest[3];
-        const weather = latest[4];
-
-
-        // Update dashboard cards
-
         document.getElementById("owl-count").textContent =
-            owlNumber + " 🦉";
+            latest[2] + " 🦉";
 
         document.getElementById("temperature").textContent =
-            temperature + "°F";
+            latest[3] + "°F";
 
         document.getElementById("weather").textContent =
-            weather;
+            latest[4];
 
         document.getElementById("updated").textContent =
-            time;
+            latest[1];
 
+        createCharts(data);
 
+    } catch (error) {
 
-        // Create charts
+        console.error("Error loading spreadsheet:", error);
+
+        document.getElementById("owl-count").textContent = "Error";
+
+    }
+
+}
 
 function createCharts(data) {
 
     const hourlyCounts = new Array(24).fill(0);
 
-    let temperatures = [];
-    let times = [];
+    const temperatureTimes = [];
+    const temperatures = [];
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -72,32 +69,31 @@ function createCharts(data) {
     data.forEach(row => {
 
         const timestamp = new Date(row[1]);
+
         const owlNumber = Number(row[2]);
+        const temperature = Number(row[3]);
 
-        times.push(row[1]);
-        temperatures.push(Number(row[3]));
+        // Temperature chart
+        temperatureTimes.push(row[1]);
+        temperatures.push(temperature);
 
-        // Count owl detections by hour over the last 7 days
-        if (!isNaN(timestamp) && timestamp >= sevenDaysAgo) {
+        // Owl activity chart (last 7 days)
+        if (!isNaN(timestamp.getTime()) && timestamp >= sevenDaysAgo) {
 
-            const hour = timestamp.getHours();
-
-            hourlyCounts[hour] += owlNumber;
+            hourlyCounts[timestamp.getHours()] += owlNumber;
 
         }
 
     });
 
-    // Destroy old charts when refreshing
-    if (owlChart) {
-        owlChart.destroy();
-    }
+    // Destroy old charts before redrawing
+    if (owlChart) owlChart.destroy();
+    if (tempChart) tempChart.destroy();
 
-    if (tempChart) {
-        tempChart.destroy();
-    }
+    // ==========================
+    // Owl Activity Chart
+    // ==========================
 
-    // Owl Activity Chart (Last 7 Days)
     owlChart = new Chart(
         document.getElementById("owlChart"),
         {
@@ -107,12 +103,10 @@ function createCharts(data) {
             data: {
 
                 labels: [
-
                     "12 AM","1 AM","2 AM","3 AM","4 AM","5 AM",
                     "6 AM","7 AM","8 AM","9 AM","10 AM","11 AM",
                     "12 PM","1 PM","2 PM","3 PM","4 PM","5 PM",
                     "6 PM","7 PM","8 PM","9 PM","10 PM","11 PM"
-
                 ],
 
                 datasets: [{
@@ -121,7 +115,9 @@ function createCharts(data) {
 
                     data: hourlyCounts,
 
-                    borderWidth: 1
+                    borderWidth: 1,
+
+                    borderRadius: 6
 
                 }]
 
@@ -162,10 +158,12 @@ function createCharts(data) {
             }
 
         }
-
     );
 
+    // ==========================
     // Temperature Chart
+    // ==========================
+
     tempChart = new Chart(
         document.getElementById("tempChart"),
         {
@@ -174,7 +172,7 @@ function createCharts(data) {
 
             data: {
 
-                labels: times,
+                labels: temperatureTimes,
 
                 datasets: [{
 
@@ -195,16 +193,12 @@ function createCharts(data) {
             }
 
         }
-
     );
 
 }
 
-
-
-// Load immediately
+// Initial load
 loadData();
-
 
 // Refresh every minute
 setInterval(loadData, 60000);
