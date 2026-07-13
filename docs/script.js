@@ -59,56 +59,36 @@ async function loadData() {
 
         // Create charts
 
-        createCharts(data);
-
-
-    } catch(error) {
-
-        console.error("Error loading spreadsheet:", error);
-
-        document.getElementById("owl-count").textContent =
-            "Error";
-
-    }
-
-}
-
-
-
-
 function createCharts(data) {
 
-
     const hourlyCounts = new Array(24).fill(0);
-let temperatures = [];
 
-const sevenDaysAgo = new Date();
-sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     let temperatures = [];
+    let times = [];
 
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     data.forEach(row => {
 
-    const timestamp = new Date(row[1]);
-    const owlNumber = Number(row[2]);
+        const timestamp = new Date(row[1]);
+        const owlNumber = Number(row[2]);
 
-    temperatures.push(Number(row[3]));
+        times.push(row[1]);
+        temperatures.push(Number(row[3]));
 
-    // Only count entries from the last 7 days
-    if (!isNaN(timestamp) && timestamp >= sevenDaysAgo) {
+        // Count owl detections by hour over the last 7 days
+        if (!isNaN(timestamp) && timestamp >= sevenDaysAgo) {
 
-        const hour = timestamp.getHours();
+            const hour = timestamp.getHours();
 
-        hourlyCounts[hour] += owlNumber;
+            hourlyCounts[hour] += owlNumber;
 
-    }
+        }
 
-});
-
-
+    });
 
     // Destroy old charts when refreshing
-
     if (owlChart) {
         owlChart.destroy();
     }
@@ -117,53 +97,31 @@ sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         tempChart.destroy();
     }
 
-
-
-    // Owl chart
-
+    // Owl Activity Chart (Last 7 Days)
     owlChart = new Chart(
         document.getElementById("owlChart"),
         {
 
             type: "bar",
 
-data: {
-
-    labels: [
-
-        "12 AM","1 AM","2 AM","3 AM","4 AM","5 AM",
-
-        "6 AM","7 AM","8 AM","9 AM","10 AM","11 AM",
-
-        "12 PM","1 PM","2 PM","3 PM","4 PM","5 PM",
-
-        "6 PM","7 PM","8 PM","9 PM","10 PM","11 PM"
-
-    ],
-
-    datasets: [{
-
-        label: "Owls Detected (Last 7 Days)",
-
-        data: hourlyCounts,
-
-        borderWidth: 1
-
-    }]
-
-},
-
             data: {
 
-                labels: times,
+                labels: [
+
+                    "12 AM","1 AM","2 AM","3 AM","4 AM","5 AM",
+                    "6 AM","7 AM","8 AM","9 AM","10 AM","11 AM",
+                    "12 PM","1 PM","2 PM","3 PM","4 PM","5 PM",
+                    "6 PM","7 PM","8 PM","9 PM","10 PM","11 PM"
+
+                ],
 
                 datasets: [{
 
-                    label: "Owls Detected",
+                    label: "Owls Detected (Last 7 Days)",
 
-                    data: owlCounts,
+                    data: hourlyCounts,
 
-                    tension: 0.3
+                    borderWidth: 1
 
                 }]
 
@@ -171,7 +129,35 @@ data: {
 
             options: {
 
-                responsive: true
+                responsive: true,
+
+                plugins: {
+
+                    title: {
+
+                        display: true,
+
+                        text: "Owl Activity by Hour (Last 7 Days)"
+
+                    }
+
+                },
+
+                scales: {
+
+                    y: {
+
+                        beginAtZero: true,
+
+                        ticks: {
+
+                            precision: 0
+
+                        }
+
+                    }
+
+                }
 
             }
 
@@ -179,10 +165,7 @@ data: {
 
     );
 
-
-
-    // Temperature chart
-
+    // Temperature Chart
     tempChart = new Chart(
         document.getElementById("tempChart"),
         {
@@ -207,37 +190,7 @@ data: {
 
             options: {
 
-    responsive: true,
-
-    plugins: {
-
-        title: {
-
-            display: true,
-
-            text: "Owl Activity by Hour (Last 7 Days)"
-
-        }
-
-    },
-
-    scales: {
-
-        y: {
-
-            beginAtZero: true,
-
-            ticks: {
-
-                precision: 0
-
-            }
-
-        }
-
-    }
-
-}
+                responsive: true
 
             }
 
