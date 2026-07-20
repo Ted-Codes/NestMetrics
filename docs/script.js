@@ -1,17 +1,14 @@
 // Google Sheet CSV link
-const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMDh2FHRk4aiCq83pTnqvq7BIL1N6eWqjblQetiTT_pHkxdBkwV0C6KwtolOmy45yrfr5F7dWUEKjc/pub?output=csv";
+const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQRn5zJpYlQn5Z4rgTvmzTYIwwYkcCXDXDETmUVSn8fMkUxJX_lVAzobr6ahJ8cwT_00rl9phb5gNjb/pub?output=csv";
 
 let owlChart;
 let tempChart;
 
 // Load data from Google Sheets
 async function loadData() {
-
     try {
-
         const response = await fetch(sheetURL + "&cache=" + Date.now());
         const csvText = await response.text();
-
         const rows = csvText.trim().split("\n");
 
         // Convert CSV rows into arrays
@@ -25,41 +22,56 @@ async function loadData() {
 
         /*
         Columns:
-        0 = Timestamp (ignored)
-        1 = Time Stamp
-        2 = Owl Number
-        3 = Temperature
-        4 = Weather
+        0 = Timestamp (form submit time, ignored)
+        1 = Time Stamp (capture time)
+        2 = Baby Owl Number
+        3 = Adult Owl Number
+        4 = Confidence Percent
+        5 = Temperature (Degrees)
+        6 = Weather
         */
+        const babyCount = Number(latest[2]);
+        const adultCount = Number(latest[3]);
+        const temperature = latest[5];
+        const weather = latest[6] || "";
 
         document.getElementById("owl-count").textContent =
-            latest[2] + " 🦉";
-
+            babyCount + " 🦉";
+        document.getElementById("adult-owl-count").textContent =
+            adultCount + " 🦉";
         document.getElementById("temperature").textContent =
-            latest[3] + "°F";
-
+            temperature + "°F";
         document.getElementById("weather").textContent =
-            latest[4];
-
+            weather;
         document.getElementById("updated").textContent =
             latest[1];
 
+        // Rain / adult-in-box status
+        const isRaining = weather.toLowerCase().includes("rain");
+        const adultInBox = adultCount > 0;
+        const rainStatusEl = document.getElementById("rain-status");
+        if (rainStatusEl) {
+            if (isRaining && adultInBox) {
+                rainStatusEl.textContent = "☔ Raining — Adult in box";
+            } else if (isRaining && !adultInBox) {
+                rainStatusEl.textContent = "☔ Raining — Adult left box";
+            } else if (adultInBox) {
+                rainStatusEl.textContent = "☀️ Not raining — Adult in box";
+            } else {
+                rainStatusEl.textContent = "☀️ Not raining — Adult not in box";
+            }
+        }
+
         createCharts(data);
-
     } catch (error) {
-
         console.error("Error loading spreadsheet:", error);
-
         document.getElementById("owl-count").textContent = "Error";
-
     }
-
 }
 
 function createCharts(data) {
-
-    const hourlyCounts = new Array(24).fill(0);
-
+    const hourlyBabyCounts = new Array(24).fill(0);
+    const hourlyAdultCounts = new Array(24).fill(0);
     const temperatureTimes = [];
     const temperatures = [];
 
@@ -67,11 +79,10 @@ function createCharts(data) {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     data.forEach(row => {
-
         const timestamp = new Date(row[1]);
-
-        const owlNumber = Number(row[2]);
-        const temperature = Number(row[3]);
+        const babyNumber = Number(row[2]);
+        const adultNumber = Number(row[3]);
+        const temperature = Number(row[5]);
 
         // Temperature chart
         temperatureTimes.push(row[1]);
@@ -79,11 +90,9 @@ function createCharts(data) {
 
         // Owl activity chart (last 7 days)
         if (!isNaN(timestamp.getTime()) && timestamp >= sevenDaysAgo) {
-
-            hourlyCounts[timestamp.getHours()] += owlNumber;
-
+            hourlyBabyCounts[timestamp.getHours()] += babyNumber;
+            hourlyAdultCounts[timestamp.getHours()] += adultNumber;
         }
-
     });
 
     // Destroy old charts before redrawing
@@ -93,108 +102,72 @@ function createCharts(data) {
     // ==========================
     // Owl Activity Chart
     // ==========================
-
     owlChart = new Chart(
         document.getElementById("owlChart"),
         {
-
             type: "bar",
-
             data: {
-
                 labels: [
                     "12 AM","1 AM","2 AM","3 AM","4 AM","5 AM",
                     "6 AM","7 AM","8 AM","9 AM","10 AM","11 AM",
                     "12 PM","1 PM","2 PM","3 PM","4 PM","5 PM",
                     "6 PM","7 PM","8 PM","9 PM","10 PM","11 PM"
                 ],
-
-                datasets: [{
-
-                    label: "Owls Detected (Last 7 Days)",
-
-                    data: hourlyCounts,
-
-                    borderWidth: 1,
-
-                    borderRadius: 6
-
-                }]
-
+                datasets: [
+                    {
+                        label: "Baby Owls Detected (Last 7 Days)",
+                        data: hourlyBabyCounts,
+                        borderWidth: 1,
+                        borderRadius: 6
+                    },
+                    {
+                        label: "Adult Owls Detected (Last 7 Days)",
+                        data: hourlyAdultCounts,
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }
+                ]
             },
-
             options: {
-
                 responsive: true,
-
                 plugins: {
-
                     title: {
-
                         display: true,
-
                         text: "Owl Activity by Hour (Last 7 Days)"
-
                     }
-
                 },
-
                 scales: {
-
                     y: {
-
                         beginAtZero: true,
-
                         ticks: {
-
                             precision: 0
-
                         }
-
                     }
-
                 }
-
             }
-
         }
     );
 
     // ==========================
     // Temperature Chart
     // ==========================
-
     tempChart = new Chart(
         document.getElementById("tempChart"),
         {
-
             type: "line",
-
             data: {
-
                 labels: temperatureTimes,
-
                 datasets: [{
-
                     label: "Temperature (°F)",
-
                     data: temperatures,
-
                     tension: 0.3
-
                 }]
-
             },
-
             options: {
-
                 responsive: true
-
             }
-
         }
     );
-
 }
 
 // Initial load
