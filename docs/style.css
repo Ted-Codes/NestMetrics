@@ -132,6 +132,26 @@ main {
     color: #ffffff;
 }
 
+/* Temp & Weather */
+
+.weather-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+
+.weather-dashboard-grid .card {
+    text-align: center;
+}
+
+
+.weather-dashboard-grid p {
+    font-size: 32px;
+    font-weight: bold;
+    margin-bottom: 0;
+    color: #ffffff;
+}
 
 
 /* Charts */
