@@ -202,6 +202,36 @@ footer {
 
 }
 
+/* Share Button */
+
+.stream-btn {
+    padding: 15px 75px;
+    border-radius: 10px;
+    background: #1c2b27;
+    color: #f5f5f5;
+    font-size: 15px;
+    font-weight: bold;
+    text-decoration: none;
+    transition: background 0.2s ease, color 0.2s ease;
+    border: 2px solid #2e4a26;
+}
+.stream-btn:hover {
+    background: #6fae53;
+    color: #101820;
+}
+.stream-btn.active {
+    background: #b8e986;
+    color: #101820;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+    pointer-events: none;
+}
+.stream-btn:visited {
+    color: #f5f5f5;
+}
+.stream-btn.active:visited {
+    color: #101820;
+}
+
 a:visited {
   color: royalblue; /* Replace 'blue' with the website's link color */
 }
