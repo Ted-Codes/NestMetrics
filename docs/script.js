@@ -137,7 +137,7 @@ function createCharts(data) {
                 plugins: {
                     title: {
                         display: true,
-                        text: "Owl Activity by Hour (Last 7 Days)"
+                        text: "Owlet Count Over the Last 7 Days"
                     }
                 },
                 scales: {
