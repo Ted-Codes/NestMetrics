@@ -123,12 +123,6 @@ function createCharts(data) {
                         data: hourlyBabyCounts,
                         borderWidth: 1,
                         borderRadius: 6
-                    },
-                    {
-                        label: "Adult Owls Detected (Last 7 Days)",
-                        data: hourlyAdultCounts,
-                        borderWidth: 1,
-                        borderRadius: 6
                     }
                 ]
             },
