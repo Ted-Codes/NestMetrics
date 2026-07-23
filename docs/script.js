@@ -42,7 +42,7 @@ async function loadData() {
         document.getElementById("owl-count").textContent =
             babyCount + " 🦉";
         document.getElementById("adult-owl-count").textContent =
-            adultCount + " 🦉";
+            adultCount;
         document.getElementById("temperature").textContent =
             temperature + "°F";
         document.getElementById("weather").textContent =
