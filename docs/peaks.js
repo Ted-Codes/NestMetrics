@@ -30,7 +30,7 @@ async function loadData() {
         5 = Temperature (Degrees)
         6 = Weather
         */
-        const beforebabyCount = Number(latest[2]);
+        const beforebabyCount = Number(latest[3]);
         const beforeadultCount = Number(latest[4]);
 
         const babyCount = beforebabyCount;
