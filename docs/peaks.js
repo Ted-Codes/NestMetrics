@@ -120,6 +120,8 @@ function createCharts(data) {
                     {
                         label: "Owl Sightings",
                         data: sightingsByHour,
+                        backgroundColor: "rgba(220, 38, 38, 0.7)",
+                        borderColor: "rgba(220, 38, 38, 1)",
                         borderWidth: 1,
                         borderRadius: 6
                     }
