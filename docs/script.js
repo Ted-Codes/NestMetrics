@@ -78,9 +78,8 @@ async function loadData() {
 function parseSheetTimestamp(str) {
     if (!str) return new Date(NaN);
     const trimmed = str.trim();
-
     const match = trimmed.match(
-        /^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
     );
     if (!match) return new Date(NaN);
 
@@ -95,7 +94,7 @@ function parseSheetTimestamp(str) {
 
     return new Date(
         Number(year), Number(month) - 1, Number(day),
-        hours, Number(minutes), 0
+        hours, Number(minutes)
     );
 }
 
