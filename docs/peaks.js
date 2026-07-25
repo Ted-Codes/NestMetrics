@@ -104,7 +104,7 @@ function createCharts(data) {
     const temperatures = [];
 
     data.forEach(row => {
-        const timestamp = new Date(row[1]);
+        const timestamp = parseSheetTimestamp(row[1]);
         const owlNumber = Number(row[3]); // Adult Owl Number — matches "Estimated Owl Count" card
         const temperature = Number(row[5]);
 
