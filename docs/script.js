@@ -73,19 +73,18 @@ async function loadData() {
     }
 }
 
-// Reliably parses Google Sheets' "M/D/YYYY H:MM:SS" timestamp format
-// across all browsers (Safari's Date() is much stricter than Chrome's)
-// Reliably parses Google Sheets' "M/D/YYYY H:MM:SS AM/PM" timestamp format
+// Parses Google Sheets' "MM-DD-YYYY H:MM AM/PM" timestamp format
 // across all browsers (Safari's Date() is much stricter than Chrome's)
 function parseSheetTimestamp(str) {
     if (!str) return new Date(NaN);
     const trimmed = str.trim();
+
     const match = trimmed.match(
-        /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i
+        /^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
     );
     if (!match) return new Date(NaN);
 
-    const [, month, day, year, rawHours, minutes, seconds, meridiem] = match;
+    const [, month, day, year, rawHours, minutes, meridiem] = match;
     let hours = Number(rawHours);
 
     if (meridiem) {
@@ -96,7 +95,7 @@ function parseSheetTimestamp(str) {
 
     return new Date(
         Number(year), Number(month) - 1, Number(day),
-        hours, Number(minutes), Number(seconds)
+        hours, Number(minutes), 0
     );
 }
 
