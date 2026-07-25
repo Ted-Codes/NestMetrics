@@ -156,7 +156,7 @@ function createCharts(data) {
                 plugins: {
                     title: {
                         display: true,
-                        text: "Owl Sightings by Hour of Day"
+                        text: "Owl Sightings by Hour (Last Seven Days)"
                     }
                 },
                 scales: {
