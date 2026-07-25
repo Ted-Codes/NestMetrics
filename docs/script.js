@@ -73,8 +73,6 @@ async function loadData() {
     }
 }
 
-\
-
 // Parses Google Sheets' "MM-DD-YYYY H:MM AM/PM" timestamp format
 // across all browsers (Safari's Date() is much stricter than Chrome's)
 function parseSheetTimestamp(str) {
