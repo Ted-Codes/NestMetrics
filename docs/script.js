@@ -73,6 +73,8 @@ async function loadData() {
     }
 }
 
+\
+
 // Parses Google Sheets' "MM-DD-YYYY H:MM AM/PM" timestamp format
 // across all browsers (Safari's Date() is much stricter than Chrome's)
 function parseSheetTimestamp(str) {
@@ -97,6 +99,9 @@ function parseSheetTimestamp(str) {
         hours, Number(minutes)
     );
 }
+
+console.log("labels:", labels);
+console.log("peakCounts:", peakCounts);
 
 function createCharts(data) {
     // Track the peak owlet count per calendar day, for the last 7 days
