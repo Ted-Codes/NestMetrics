@@ -75,15 +75,29 @@ async function loadData() {
 
 // Reliably parses Google Sheets' "M/D/YYYY H:MM:SS" timestamp format
 // across all browsers (Safari's Date() is much stricter than Chrome's)
+// Reliably parses Google Sheets' "M/D/YYYY H:MM:SS AM/PM" timestamp format
+// across all browsers (Safari's Date() is much stricter than Chrome's)
 function parseSheetTimestamp(str) {
     if (!str) return new Date(NaN);
-    const [datePart, timePart] = str.trim().split(" ");
-    const [month, day, year] = datePart.split("/").map(Number);
-    let hours = 0, minutes = 0, seconds = 0;
-    if (timePart) {
-        [hours, minutes, seconds] = timePart.split(":").map(Number);
+    const trimmed = str.trim();
+    const match = trimmed.match(
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i
+    );
+    if (!match) return new Date(NaN);
+
+    const [, month, day, year, rawHours, minutes, seconds, meridiem] = match;
+    let hours = Number(rawHours);
+
+    if (meridiem) {
+        const isPM = meridiem.toUpperCase() === "PM";
+        if (isPM && hours !== 12) hours += 12;
+        if (!isPM && hours === 12) hours = 0; // 12 AM = midnight
     }
-    return new Date(year, month - 1, day, hours, minutes, seconds || 0);
+
+    return new Date(
+        Number(year), Number(month) - 1, Number(day),
+        hours, Number(minutes), Number(seconds)
+    );
 }
 
 function createCharts(data) {
