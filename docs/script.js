@@ -98,9 +98,6 @@ function parseSheetTimestamp(str) {
     );
 }
 
-console.log("labels:", labels);
-console.log("peakCounts:", peakCounts);
-
 function createCharts(data) {
     // Track the peak owlet count per calendar day, for the last 7 days
     const dailyMaxBabies = {}; // "M/D/YYYY" -> max baby count that day
