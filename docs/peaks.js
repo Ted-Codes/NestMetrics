@@ -73,6 +73,29 @@ async function loadData() {
     }
 }
 
+function parseSheetTimestamp(str) {
+    if (!str) return new Date(NaN);
+    const trimmed = str.trim();
+    const match = trimmed.match(
+        /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i
+    );
+    if (!match) return new Date(NaN);
+
+    const [, month, day, year, rawHours, minutes, seconds, meridiem] = match;
+    let hours = Number(rawHours);
+
+    if (meridiem) {
+        const isPM = meridiem.toUpperCase() === "PM";
+        if (isPM && hours !== 12) hours += 12;
+        if (!isPM && hours === 12) hours = 0; // 12 AM = midnight
+    }
+
+    return new Date(
+        Number(year), Number(month) - 1, Number(day),
+        hours, Number(minutes), Number(seconds)
+    );
+}
+
 function createCharts(data) {
     // Track owl sightings by hour of day (0–23), across all available data
     const sightingsByHour = new Array(24).fill(0);
