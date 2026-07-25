@@ -73,6 +73,19 @@ async function loadData() {
     }
 }
 
+// Reliably parses Google Sheets' "M/D/YYYY H:MM:SS" timestamp format
+// across all browsers (Safari's Date() is much stricter than Chrome's)
+function parseSheetTimestamp(str) {
+    if (!str) return new Date(NaN);
+    const [datePart, timePart] = str.trim().split(" ");
+    const [month, day, year] = datePart.split("/").map(Number);
+    let hours = 0, minutes = 0, seconds = 0;
+    if (timePart) {
+        [hours, minutes, seconds] = timePart.split(":").map(Number);
+    }
+    return new Date(year, month - 1, day, hours, minutes, seconds || 0);
+}
+
 function createCharts(data) {
     // Track the peak owlet count per calendar day, for the last 7 days
     const dailyMaxBabies = {}; // "M/D/YYYY" -> max baby count that day
@@ -84,7 +97,7 @@ function createCharts(data) {
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
     data.forEach(row => {
-        const timestamp = new Date(row[1]);
+        const timestamp = parseSheetTimestamp(row[1]);
         const babyNumber = Number(row[2]);
         const temperature = Number(row[5]);
 
