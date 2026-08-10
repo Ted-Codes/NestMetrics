@@ -155,7 +155,7 @@ function createCharts(data) {
                 labels: labels,
                 datasets: [
                     {
-                        label: "Peak Owlet Count",
+                        label: "Peak Owl Count",
                         data: peakCounts,
                         borderWidth: 1,
                         borderRadius: 6
@@ -167,7 +167,7 @@ function createCharts(data) {
                 plugins: {
                     title: {
                         display: true,
-                        text: "Owlet Count Over the Last 7 Days (Daily Peak)"
+                        text: "Owl Count Over the Last 7 Days (Daily Peak)"
                     }
                 },
                 scales: {
