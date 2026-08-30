@@ -114,7 +114,7 @@ function createCharts(data) {
         temperatures.push(temperature);
 
         // Count a sighting whenever an owl was present, bucketed by hour of day
-        if (!isNaN(timestamp.getTime()) && owlNumber > 0) {
+        if (!isNaN(timestamp.getTime()) && owlNumber === "Occupied") {
             sightingsByHour[timestamp.getHours()]++;
         }
     });
