@@ -1,220 +1,589 @@
+```js
+// ============================================================
+// OWL BOX WEBSITE - SCRIPT
+// ============================================================
+
 // Google Sheet CSV link
-const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr18vuowtUDnqE_Sn2b9d_7lvAmGSvnPYaixiMnlhtWXSndXgcKQPn6NDmAtKmVkRf0_rw6Jr3ctIS/pub?output=csv";
+const sheetURL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr18vuowtUDnqE_Sn2b9d_7lvAmGSvnPYaixiMnlhtWXSndXgcKQPn6NDmAtKmVkRf0_rw6Jr3ctIS/pub?output=csv";
 
 let owlChart;
 let tempChart;
 
-// Load data from Google Sheets
+
+// ============================================================
+// LOAD DATA FROM GOOGLE SHEETS
+// ============================================================
+
 async function loadData() {
     try {
-        const response = await fetch(sheetURL + "&cache=" + Date.now());
+        // Add timestamp to prevent browser caching
+        const response = await fetch(
+            sheetURL + "&cache=" + Date.now()
+        );
+
         const csvText = await response.text();
+
+        // Split CSV into rows
         const rows = csvText.trim().split("\n");
 
-        // Convert CSV rows into arrays
+        // Convert rows into arrays
         const data = rows.map(row => row.split(","));
 
         // Remove header row
         data.shift();
 
+        // Make sure there is data
+        if (data.length === 0) {
+            console.error("No data found in spreadsheet.");
+            return;
+        }
+
         // Get newest row
         const latest = data[data.length - 1];
 
+
         /*
-        Columns:
-        0 = Timestamp (form submit time, ignored)
-        1 = Time Stamp (capture time)
-        2 = Baby Owl Number
-        3 = Adult Owl Number
-        4 = Confidence Percent
-        5 = Temperature (Degrees)
-        6 = Weather
+        ========================================================
+        GOOGLE SHEET COLUMNS
+        ========================================================
+
+        0 = Timestamp
+        1 = Time Stamp
+        2 = Occupancy
+        3 = Temperature
+        4 = Weather
+        ========================================================
         */
-        const beforebabyCount = Number(latest[3]);
-        const beforeadultCount = Number(latest[4]);
 
-        const babyCount = beforebabyCount;
-        const adultCount = beforeadultCount;
 
-        const temperature = latest[5];
-        const weather = latest[6] || "";
+        // ----------------------------------------------------
+        // Get latest values
+        // ----------------------------------------------------
 
-        document.getElementById("owl-count").textContent =
-            babyCount + " 🦉";
-        document.getElementById("adult-owl-count").textContent =
-            adultCount + "%";
-        document.getElementById("temperature").textContent =
-            temperature + "°F";
-        document.getElementById("weather").textContent =
-            weather;
-        document.getElementById("updated").textContent =
-            latest[1];
+        const occupancy = (latest[2] || "").trim();
+        const temperature = latest[3] || "";
+        const weather = latest[4] || "";
 
-        // Rain / adult-in-box status
-        const isRaining = weather.toLowerCase().includes("rain");
-        const adultInBox = adultCount > 0;
-        const rainStatusEl = document.getElementById("rain-status");
-        if (rainStatusEl) {
-            if (isRaining && adultInBox) {
-                rainStatusEl.textContent = "☔ Raining — Adult in box";
-            } else if (isRaining && !adultInBox) {
-                rainStatusEl.textContent = "☔ Raining — Adult left box";
-            } else if (adultInBox) {
-                rainStatusEl.textContent = "☀️ Not raining — Adult in box";
+
+        // ----------------------------------------------------
+        // Determine whether box is occupied
+        // ----------------------------------------------------
+
+        const isOccupied =
+            occupancy.toLowerCase() === "occupied";
+
+
+        // ====================================================
+        // UPDATE WEBSITE
+        // ====================================================
+
+
+        // Occupancy card
+        const owlCountElement =
+            document.getElementById("owl-count");
+
+        if (owlCountElement) {
+            if (isOccupied) {
+                owlCountElement.textContent = "Occupied 🦉";
             } else {
-                rainStatusEl.textContent = "☀️ Not raining — Adult not in box";
+                owlCountElement.textContent = "Unoccupied";
             }
         }
 
+
+        // Secondary occupancy display
+        const occupancyElement =
+            document.getElementById("adult-owl-count");
+
+        if (occupancyElement) {
+            occupancyElement.textContent =
+                isOccupied ? "Occupied" : "Unoccupied";
+        }
+
+
+        // Temperature
+        const temperatureElement =
+            document.getElementById("temperature");
+
+        if (temperatureElement) {
+            temperatureElement.textContent =
+                temperature + "°F";
+        }
+
+
+        // Weather
+        const weatherElement =
+            document.getElementById("weather");
+
+        if (weatherElement) {
+            weatherElement.textContent =
+                weather;
+        }
+
+
+        // Last updated
+        const updatedElement =
+            document.getElementById("updated");
+
+        if (updatedElement) {
+            updatedElement.textContent =
+                latest[1];
+        }
+
+
+        // ====================================================
+        // RAIN + OCCUPANCY STATUS
+        // ====================================================
+
+        const isRaining =
+            weather.toLowerCase().includes("rain");
+
+        const rainStatusElement =
+            document.getElementById("rain-status");
+
+
+        if (rainStatusElement) {
+
+            if (isRaining && isOccupied) {
+
+                rainStatusElement.textContent =
+                    "☔ Raining — Owl in box";
+
+            } else if (isRaining && !isOccupied) {
+
+                rainStatusElement.textContent =
+                    "☔ Raining — Box unoccupied";
+
+            } else if (!isRaining && isOccupied) {
+
+                rainStatusElement.textContent =
+                    "☀️ Not raining — Owl in box";
+
+            } else {
+
+                rainStatusElement.textContent =
+                    "☀️ Not raining — Box unoccupied";
+            }
+        }
+
+
+        // ====================================================
+        // CREATE / UPDATE CHARTS
+        // ====================================================
+
         createCharts(data);
+
+
     } catch (error) {
-        console.error("Error loading spreadsheet:", error);
-        document.getElementById("owl-count").textContent = "Error";
+
+        console.error(
+            "Error loading spreadsheet:",
+            error
+        );
+
+        const owlCountElement =
+            document.getElementById("owl-count");
+
+        if (owlCountElement) {
+            owlCountElement.textContent =
+                "Error";
+        }
     }
 }
 
-/// FIX TIME ISSUES
+
+
+// ============================================================
+// PARSE GOOGLE SHEETS TIMESTAMP
+// ============================================================
+
 function parseSheetTimestamp(str) {
-    if (!str) return new Date(NaN);
+
+    if (!str) {
+        return new Date(NaN);
+    }
+
     const trimmed = str.trim();
+
     const match = trimmed.match(
         /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
     );
-    if (!match) return new Date(NaN);
 
-    const [, month, day, year, rawHours, minutes, meridiem] = match;
-    let hours = Number(rawHours);
-
-    if (meridiem) {
-        const isPM = meridiem.toUpperCase() === "PM";
-        if (isPM && hours !== 12) hours += 12;
-        if (!isPM && hours === 12) hours = 0; // 12 AM = midnight
+    if (!match) {
+        return new Date(NaN);
     }
 
+
+    const [
+        ,
+        month,
+        day,
+        year,
+        rawHours,
+        minutes,
+        meridiem
+    ] = match;
+
+
+    let hours = Number(rawHours);
+
+
+    // Convert 12-hour time to 24-hour time
+    if (meridiem) {
+
+        const isPM =
+            meridiem.toUpperCase() === "PM";
+
+        if (isPM && hours !== 12) {
+            hours += 12;
+        }
+
+        if (!isPM && hours === 12) {
+            hours = 0;
+        }
+    }
+
+
     return new Date(
-        Number(year), Number(month) - 1, Number(day),
-        hours, Number(minutes)
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        hours,
+        Number(minutes)
     );
 }
 
+
+
+// ============================================================
+// CREATE CHARTS
+// ============================================================
+
 function createCharts(data) {
-    // Track owl sightings by hour of day (0–23), across all available data
-    const sightingsByHour = new Array(24).fill(0);
+
+
+    // ========================================================
+    // OCCUPANCY BY HOUR
+    // ========================================================
+
+    const occupiedByHour =
+        new Array(24).fill(0);
+
+
+    // ========================================================
+    // TEMPERATURE DATA
+    // ========================================================
 
     const temperatureTimes = [];
     const temperatures = [];
 
+
+    // ========================================================
+    // PROCESS EVERY ROW
+    // ========================================================
+
     data.forEach(row => {
-        const timestamp = parseSheetTimestamp(row[1]);
-        const owlNumber = row[2].trim(); // Adult Owl Number — matches "Estimated Owl Count" card
-        const temperature = Number(row[5]);
 
-        // Temperature chart (unchanged)
-        temperatureTimes.push(row[1]);
-        temperatures.push(temperature);
+        // Parse timestamp
+        const timestamp =
+            parseSheetTimestamp(row[1]);
 
-        // Count a sighting whenever an owl was present, bucketed by hour of day
-        if (!isNaN(timestamp.getTime()) && owlNumber === "Occupied") {
-            sightingsByHour[timestamp.getHours()]++;
+
+        // Get occupancy
+        const occupancy =
+            (row[2] || "").trim();
+
+
+        // Get temperature
+        const temperature =
+            Number(row[3]);
+
+
+        // ----------------------------------------------------
+        // Temperature chart
+        // ----------------------------------------------------
+
+        if (!isNaN(temperature)) {
+
+            temperatureTimes.push(row[1]);
+            temperatures.push(temperature);
         }
+
+
+        // ----------------------------------------------------
+        // Occupancy chart
+        // ----------------------------------------------------
+
+        if (
+            !isNaN(timestamp.getTime()) &&
+            occupancy.toLowerCase() === "occupied"
+        ) {
+
+            occupiedByHour[
+                timestamp.getHours()
+            ]++;
+        }
+
     });
 
-    // Build 12 AM–11 PM hour labels
+
+    // ========================================================
+    // BUILD TIME LABELS
+    // ========================================================
+
     const labels = [];
+
+
     for (let h = 0; h < 24; h++) {
-        const period = h < 12 ? "AM" : "PM";
-        const hour12 = h % 12 === 0 ? 12 : h % 12;
-        labels.push(`${hour12} ${period}`);
+
+        const period =
+            h < 12 ? "AM" : "PM";
+
+        const hour12 =
+            h % 12 === 0
+                ? 12
+                : h % 12;
+
+        labels.push(
+            `${hour12} ${period}`
+        );
     }
 
-    // Destroy old charts before redrawing
-    if (owlChart) owlChart.destroy();
-    if (tempChart) tempChart.destroy();
 
-    // ==========================
-    // Owl Sightings by Hour Chart
-    // ==========================
-    owlChart = new Chart(
-        document.getElementById("owlChart"),
-        {
-            type: "bar",
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: "Owl Sightings",
-                        data: sightingsByHour,
-                        backgroundColor: "rgba(220, 38, 38, 0.7)",
-                        borderColor: "rgba(220, 38, 38, 1)",
-                        borderWidth: 1,
-                        borderRadius: 6
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: "Owl Sightings by Hour (Last Seven Days)"
-                    }
+
+    // ========================================================
+    // DESTROY OLD CHARTS
+    // ========================================================
+
+    if (owlChart) {
+        owlChart.destroy();
+    }
+
+    if (tempChart) {
+        tempChart.destroy();
+    }
+
+
+
+    // ========================================================
+    // OCCUPANCY CHART
+    // ========================================================
+
+    const owlChartElement =
+        document.getElementById("owlChart");
+
+
+    if (owlChartElement) {
+
+        owlChart = new Chart(
+            owlChartElement,
+            {
+                type: "bar",
+
+                data: {
+
+                    labels: labels,
+
+                    datasets: [
+
+                        {
+                            label: "Occupied Readings",
+
+                            data: occupiedByHour,
+
+                            backgroundColor:
+                                "rgba(220, 38, 38, 0.7)",
+
+                            borderColor:
+                                "rgba(220, 38, 38, 1)",
+
+                            borderWidth: 1,
+
+                            borderRadius: 6
+                        }
+
+                    ]
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { precision: 0 }
+
+
+                options: {
+
+                    responsive: true,
+
+                    plugins: {
+
+                        title: {
+
+                            display: true,
+
+                            text:
+                                "Owl Box Occupancy by Hour"
+                        }
+
                     },
-                    x: {
-                        title: { display: true, text: "Hour of Day" }
+
+
+                    scales: {
+
+                        y: {
+
+                            beginAtZero: true,
+
+                            ticks: {
+                                precision: 0
+                            },
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Occupied Readings"
+                            }
+                        },
+
+
+                        x: {
+
+                            title: {
+
+                                display: true,
+
+                                text:
+                                    "Hour of Day"
+                            }
+                        }
+
                     }
+
                 }
-            }
-        }
-    );
 
-    // ==========================
-    // Temperature Chart (unchanged)
-    // ==========================
-    tempChart = new Chart(
-        document.getElementById("tempChart"),
-        {
-            type: "line",
-            data: {
-                labels: temperatureTimes,
-                datasets: [{
-                    label: "Temperature (°F)",
-                    data: temperatures,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true
             }
-        }
-    );
+        );
+    }
+
+
+
+    // ========================================================
+    // TEMPERATURE CHART
+    // ========================================================
+
+    const tempChartElement =
+        document.getElementById("tempChart");
+
+
+    if (tempChartElement) {
+
+        tempChart = new Chart(
+            tempChartElement,
+            {
+                type: "line",
+
+                data: {
+
+                    labels:
+                        temperatureTimes,
+
+                    datasets: [
+
+                        {
+
+                            label:
+                                "Temperature (°F)",
+
+                            data:
+                                temperatures,
+
+                            tension: 0.3
+                        }
+
+                    ]
+                },
+
+
+                options: {
+
+                    responsive: true
+
+                }
+
+            }
+        );
+    }
+
 }
 
-const shareBtn = document.getElementById('nativeShareBtn');
 
-// Hide the button if the browser doesn't support native sharing
-if (shareBtn && !navigator.share) {
-  shareBtn.style.display = 'none';
+
+// ============================================================
+// NATIVE SHARE BUTTON
+// ============================================================
+
+const shareBtn =
+    document.getElementById(
+        "nativeShareBtn"
+    );
+
+
+// Hide button if browser doesn't support
+// native sharing
+
+if (
+    shareBtn &&
+    !navigator.share
+) {
+
+    shareBtn.style.display =
+        "none";
 }
 
-// Trigger the native device share menu when clicked
-shareBtn?.addEventListener('click', async () => {
-  try {
-    await navigator.share({
-      title: document.title,
-      url: window.location.href
-    });
-  } catch (err) {
-    console.log('Share canceled or failed:', err);
-  }
-});
 
-// Initial load
+// Share website
+
+shareBtn?.addEventListener(
+    "click",
+    async () => {
+
+        try {
+
+            await navigator.share({
+
+                title:
+                    document.title,
+
+                url:
+                    window.location.href
+
+            });
+
+        } catch (err) {
+
+            console.log(
+                "Share canceled or failed:",
+                err
+            );
+        }
+
+    }
+);
+
+
+
+// ============================================================
+// INITIAL LOAD
+// ============================================================
+
 loadData();
 
-// Refresh every minute
-setInterval(loadData, 60000);
+
+
+// ============================================================
+// REFRESH EVERY MINUTE
+// ============================================================
+
+setInterval(
+    loadData,
+    60000
+);
+```
