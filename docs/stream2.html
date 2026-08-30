@@ -1,9 +1,13 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Nest Metrics</title>
+
     <link rel="icon" type="image/png" href="owl-favicon-32x32.png">
 
     <!-- Styling -->
@@ -13,105 +17,296 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
+
 <body>
 
+    <!-- ======================================================
+         HEADER
+         ====================================================== -->
+
     <header>
+
         <h1>NestMetrics 🦉</h1>
+
         <p>Beta</p>
-        <p>Smart Owl Box Analytics | Live Wildlife Monitoring Dashboard</p>
-        <button id="nativeShareBtn" class="share-button">    🔗 Share 🔗    </button>
+
+        <p>
+            Smart Owl Box Analytics | Live Wildlife Monitoring Dashboard
+        </p>
+
+        <button
+            id="nativeShareBtn"
+            class="share-button">
+            🔗 Share 🔗
+        </button>
+
     </header>
+
 
 
     <main>
 
+
+        <!-- ==================================================
+             STREAM NAVIGATION
+             ================================================== -->
+
         <nav class="stream-nav">
-            <a href="index.html" class="stream-btn">Stream 1 | Devon, UK</a>
-            <a href="stream2.html" class="stream-btn active">Stream 2 | Derbyshire, UK</a>
-            <a href="stream3.html" class="stream-btn">Stream 3 | Livermore, USA</a>
-            <a href="about.html" class="stream-btn">About</a>
+
+            <a
+                href="index.html"
+                class="stream-btn">
+                Stream 1 | Devon, UK
+            </a>
+
+            <a
+                href="stream2.html"
+                class="stream-btn active">
+                Stream 2 | Derbyshire, UK
+            </a>
+
+            <a
+                href="stream3.html"
+                class="stream-btn">
+                Stream 3 | Livermore, USA
+            </a>
+
+            <a
+                href="about.html"
+                class="stream-btn">
+                About
+            </a>
+
         </nav>
-        
-        <!-- Live Stream -->
+
+
+
+        <!-- ==================================================
+             LIVE STREAM
+             ================================================== -->
+
         <section class="card">
-            <h2>🎥 Livestream from Barn Owl Live, Derbsyhire, UK.</h2>
+
+            <h2>
+                🎥 Livestream from Barn Owl Live, Derbyshire, UK
+            </h2>
+
 
             <div class="video-container">
+
                 <iframe
                     src="https://www.youtube.com/embed/AorGWrn-vx8?autoplay=1&mute=1"
-                    title="Smart Owl Box Live Stream"
+                    title="Barn Owl Live Stream"
                     allow="autoplay; encrypted-media; picture-in-picture"
                     allowfullscreen>
                 </iframe>
+
             </div>
-            <p>   </p>
-            <a href="https://barnowl.live/">Barn Owl Live's Website</a>
-            <p>NestMetrics analyzes barn owl livestreams using computer vision to measure owl activity and behavior patterns over time.</p>
-            <p>Owls may overlap or be partially obscured, so the AI may have an inaccurate count of the owls.</p>
+
+
+            <p></p>
+
+
+            <a href="https://barnowl.live/">
+                Barn Owl Live's Website
+            </a>
+
+
+            <p>
+                NestMetrics analyzes barn owl livestreams using
+                computer vision to monitor whether the nest box
+                is occupied and track environmental conditions
+                over time.
+            </p>
+
+
+            <p>
+                Occupancy is determined by AI analysis of the
+                livestream and may occasionally be inaccurate
+                if an owl is obscured or outside the camera's view.
+            </p>
+
         </section>
 
 
-        <!-- Current Data -->
+
+        <!-- ==================================================
+             CURRENT DATA
+             ================================================== -->
+
         <section class="dashboard-grid">
 
-            <div class="card">
-                <h2>🪹 Estimated Owl Count</h2>
-                <p id="owl-count">Loading...</p>
-            </div>
+
+            <!-- Occupancy -->
 
             <div class="card">
-                <h2>🤖 Confidence Percentage</h2>
-                <p id="adult-owl-count">Loading...</p>
+
+                <h2>
+                    🪹 Nest Box Status
+                </h2>
+
+                <p id="owl-count">
+                    Loading...
+                </p>
+
             </div>
 
+
+
+            <!-- Occupancy Status -->
+
             <div class="card">
-                <h2>🕒 Last Updated</h2>
-                <p id="updated">Loading...</p>
+
+                <h2>
+                    🦉 Owl Activity
+                </h2>
+
+                <p id="adult-owl-count">
+                    Loading...
+                </p>
+
             </div>
+
+
+
+            <!-- Last Updated -->
+
+            <div class="card">
+
+                <h2>
+                    🕒 Last Updated
+                </h2>
+
+                <p id="updated">
+                    Loading...
+                </p>
+
+            </div>
+
 
         </section>
-        
-        <!-- Graphs -->
-        <section class="card">
-            <h2>📸 Owl Sightings</h2>
-            <canvas id="owlChart"></canvas>
-        </section>
 
-        <!-- Temperature & Weather -->
+
+
+        <!-- ==================================================
+             WEATHER / OCCUPANCY STATUS
+             ================================================== -->
 
         <section class="weather-dashboard-grid">
 
-            <div class="card">
-                <h2>🌡 Current Temperature</h2>
-                <p id="temperature">Loading...</p>
-            </div>
+
+            <!-- Temperature -->
 
             <div class="card">
-                <h2>🌦️ Current Weather</h2>
-                <p id="weather">Loading...</p>
-            </div>
-            
-        </section>  
 
-        <!-- Temp Graph -->        
+                <h2>
+                    🌡 Current Temperature
+                </h2>
+
+                <p id="temperature">
+                    Loading...
+                </p>
+
+            </div>
+
+
+
+            <!-- Weather -->
+
+            <div class="card">
+
+                <h2>
+                    🌦️ Current Weather
+                </h2>
+
+                <p id="weather">
+                    Loading...
+                </p>
+
+            </div>
+
+
+
+            <!-- Rain + Occupancy -->
+
+            <div class="card">
+
+                <h2>
+                    🌧️ Nest Conditions
+                </h2>
+
+                <p id="rain-status">
+                    Loading...
+                </p>
+
+            </div>
+
+
+        </section>
+
+
+
+        <!-- ==================================================
+             OCCUPANCY GRAPH
+             ================================================== -->
 
         <section class="card">
-            <h2>🌡 Temperature History</h2>
-            <canvas id="tempChart"></canvas>
+
+            <h2>
+                🦉 Owl Box Occupancy
+            </h2>
+
+            <canvas id="owlChart"></canvas>
+
         </section>
+
+
+
+        <!-- ==================================================
+             TEMPERATURE HISTORY
+             ================================================== -->
+
+        <section class="card">
+
+            <h2>
+                🌡 Temperature History
+            </h2>
+
+            <canvas id="tempChart"></canvas>
+
+        </section>
+
 
     </main>
 
 
+
+    <!-- ======================================================
+         FOOTER
+         ====================================================== -->
+
     <footer>
-        <p>Livestream embedded from YouTube</p>
-        <p>NestMetrics Software, Analytics, and Website © 2026 Ted Brzustowicz. All Rights Reserved</p>
+
+        <p>
+            Livestream embedded from YouTube
+        </p>
+
+        <p>
+            NestMetrics Software, Analytics, and Website
+            © 2026 Ted Brzustowicz. All Rights Reserved
+        </p>
 
     </footer>
 
 
-    <!-- Website Logic -->
+
+    <!-- ======================================================
+         WEBSITE LOGIC
+         ====================================================== -->
+
     <script src="peaks.js"></script>
 
 </body>
+
 </html>
+```
