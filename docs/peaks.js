@@ -1,5 +1,5 @@
 // ============================================================
-// OWL BOX WEBSITE - SCRIPT
+// NESTMETRICS - OWL BOX ANALYTICS
 // ============================================================
 
 // Google Sheet CSV link
@@ -11,34 +11,34 @@ let tempChart;
 
 
 // ============================================================
-// LOAD DATA FROM GOOGLE SHEETS
+// LOAD DATA
 // ============================================================
 
 async function loadData() {
+
     try {
-        // Add timestamp to prevent browser caching
+
         const response = await fetch(
             sheetURL + "&cache=" + Date.now()
         );
 
         const csvText = await response.text();
 
-        // Split CSV into rows
         const rows = csvText.trim().split("\n");
 
-        // Convert rows into arrays
+        // Convert CSV rows into arrays
         const data = rows.map(row => row.split(","));
 
-        // Remove header row
+        // Remove header
         data.shift();
 
-        // Make sure there is data
+        // Make sure data exists
         if (data.length === 0) {
-            console.error("No data found in spreadsheet.");
+            console.error("No spreadsheet data found.");
             return;
         }
 
-        // Get newest row
+        // Newest row
         const latest = data[data.length - 1];
 
 
@@ -47,11 +47,14 @@ async function loadData() {
         GOOGLE SHEET COLUMNS
         ========================================================
 
-        0 = Timestamp
+        0 = Time Stamp
         1 = Time Stamp
-        2 = Occupancy
-        3 = Temperature
-        4 = Weather
+        2 = Baby owl       → IGNORE
+        3 = Occupancy      → USE
+        4 = Confidence     → IGNORE
+        5 = Temperature    → USE
+        6 = Weather        → USE
+
         ========================================================
         */
 
@@ -60,13 +63,18 @@ async function loadData() {
         // Get latest values
         // ----------------------------------------------------
 
-        const occupancy = (latest[2] || "").trim();
-        const temperature = latest[3] || "";
-        const weather = latest[4] || "";
+        const occupancy =
+            (latest[3] || "").trim();
+
+        const temperature =
+            (latest[5] || "").trim();
+
+        const weather =
+            (latest[6] || "").trim();
 
 
         // ----------------------------------------------------
-        // Determine whether box is occupied
+        // Determine occupancy
         // ----------------------------------------------------
 
         const isOccupied =
@@ -74,58 +82,80 @@ async function loadData() {
 
 
         // ====================================================
-        // UPDATE WEBSITE
+        // UPDATE OCCUPANCY
         // ====================================================
 
-
-        // Occupancy card
         const owlCountElement =
             document.getElementById("owl-count");
 
         if (owlCountElement) {
+
             if (isOccupied) {
-                owlCountElement.textContent = "Occupied 🦉";
+
+                owlCountElement.textContent =
+                    "Occupied 🦉";
+
             } else {
-                owlCountElement.textContent = "Unoccupied";
+
+                owlCountElement.textContent =
+                    "Unoccupied";
             }
         }
 
 
-        // Secondary occupancy display
+        // ====================================================
+        // UPDATE SECONDARY OCCUPANCY DISPLAY
+        // ====================================================
+
         const occupancyElement =
             document.getElementById("adult-owl-count");
 
         if (occupancyElement) {
+
             occupancyElement.textContent =
-                isOccupied ? "Occupied" : "Unoccupied";
+                isOccupied
+                    ? "Occupied"
+                    : "Unoccupied";
         }
 
 
-        // Temperature
+        // ====================================================
+        // UPDATE TEMPERATURE
+        // ====================================================
+
         const temperatureElement =
             document.getElementById("temperature");
 
         if (temperatureElement) {
+
             temperatureElement.textContent =
                 temperature + "°F";
         }
 
 
-        // Weather
+        // ====================================================
+        // UPDATE WEATHER
+        // ====================================================
+
         const weatherElement =
             document.getElementById("weather");
 
         if (weatherElement) {
+
             weatherElement.textContent =
                 weather;
         }
 
 
-        // Last updated
+        // ====================================================
+        // UPDATE TIMESTAMP
+        // ====================================================
+
         const updatedElement =
             document.getElementById("updated");
 
         if (updatedElement) {
+
             updatedElement.textContent =
                 latest[1];
         }
@@ -168,7 +198,7 @@ async function loadData() {
 
 
         // ====================================================
-        // CREATE / UPDATE CHARTS
+        // CREATE CHARTS
         // ====================================================
 
         createCharts(data);
@@ -185,6 +215,7 @@ async function loadData() {
             document.getElementById("owl-count");
 
         if (owlCountElement) {
+
             owlCountElement.textContent =
                 "Error";
         }
@@ -203,13 +234,18 @@ function parseSheetTimestamp(str) {
         return new Date(NaN);
     }
 
-    const trimmed = str.trim();
+    const trimmed =
+        str.trim();
 
-    const match = trimmed.match(
-        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
-    );
+
+    const match =
+        trimmed.match(
+            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
+        );
+
 
     if (!match) {
+
         return new Date(NaN);
     }
 
@@ -225,18 +261,21 @@ function parseSheetTimestamp(str) {
     ] = match;
 
 
-    let hours = Number(rawHours);
+    let hours =
+        Number(rawHours);
 
 
-    // Convert 12-hour time to 24-hour time
+    // Convert AM / PM
     if (meridiem) {
 
         const isPM =
             meridiem.toUpperCase() === "PM";
 
+
         if (isPM && hours !== 12) {
             hours += 12;
         }
+
 
         if (!isPM && hours === 12) {
             hours = 0;
@@ -245,10 +284,15 @@ function parseSheetTimestamp(str) {
 
 
     return new Date(
+
         Number(year),
+
         Number(month) - 1,
+
         Number(day),
+
         hours,
+
         Number(minutes)
     );
 }
@@ -275,44 +319,60 @@ function createCharts(data) {
     // ========================================================
 
     const temperatureTimes = [];
+
     const temperatures = [];
 
 
     // ========================================================
-    // PROCESS EVERY ROW
+    // PROCESS DATA
     // ========================================================
 
     data.forEach(row => {
 
-        // Parse timestamp
+
+        // ----------------------------------------------------
+        // Timestamp
+        // ----------------------------------------------------
+
         const timestamp =
             parseSheetTimestamp(row[1]);
 
 
-        // Get occupancy
+        // ----------------------------------------------------
+        // Occupancy
+        // ----------------------------------------------------
+
         const occupancy =
-            (row[2] || "").trim();
+            (row[3] || "").trim();
 
 
-        // Get temperature
+        // ----------------------------------------------------
+        // Temperature
+        // ----------------------------------------------------
+
         const temperature =
-            Number(row[3]);
+            Number(row[5]);
 
 
-        // ----------------------------------------------------
-        // Temperature chart
-        // ----------------------------------------------------
+        // ====================================================
+        // TEMPERATURE GRAPH
+        // ====================================================
 
         if (!isNaN(temperature)) {
 
-            temperatureTimes.push(row[1]);
-            temperatures.push(temperature);
+            temperatureTimes.push(
+                row[1]
+            );
+
+            temperatures.push(
+                temperature
+            );
         }
 
 
-        // ----------------------------------------------------
-        // Occupancy chart
-        // ----------------------------------------------------
+        // ====================================================
+        // OCCUPANCY GRAPH
+        // ====================================================
 
         if (
             !isNaN(timestamp.getTime()) &&
@@ -328,7 +388,7 @@ function createCharts(data) {
 
 
     // ========================================================
-    // BUILD TIME LABELS
+    // TIME LABELS
     // ========================================================
 
     const labels = [];
@@ -339,10 +399,12 @@ function createCharts(data) {
         const period =
             h < 12 ? "AM" : "PM";
 
+
         const hour12 =
             h % 12 === 0
                 ? 12
                 : h % 12;
+
 
         labels.push(
             `${hour12} ${period}`
@@ -352,12 +414,13 @@ function createCharts(data) {
 
 
     // ========================================================
-    // DESTROY OLD CHARTS
+    // DESTROY PREVIOUS CHARTS
     // ========================================================
 
     if (owlChart) {
         owlChart.destroy();
     }
+
 
     if (tempChart) {
         tempChart.destroy();
@@ -375,91 +438,98 @@ function createCharts(data) {
 
     if (owlChartElement) {
 
-        owlChart = new Chart(
-            owlChartElement,
-            {
-                type: "bar",
+        owlChart =
+            new Chart(
+                owlChartElement,
+                {
 
-                data: {
+                    type: "bar",
 
-                    labels: labels,
+                    data: {
 
-                    datasets: [
+                        labels: labels,
 
-                        {
-                            label: "Occupied Readings",
+                        datasets: [
 
-                            data: occupiedByHour,
+                            {
 
-                            backgroundColor:
-                                "rgba(220, 38, 38, 0.7)",
+                                label:
+                                    "Occupied Readings",
 
-                            borderColor:
-                                "rgba(220, 38, 38, 1)",
+                                data:
+                                    occupiedByHour,
 
-                            borderWidth: 1,
+                                backgroundColor:
+                                    "rgba(220, 38, 38, 0.7)",
 
-                            borderRadius: 6
-                        }
+                                borderColor:
+                                    "rgba(220, 38, 38, 1)",
 
-                    ]
-                },
+                                borderWidth: 1,
 
+                                borderRadius: 6
+                            }
 
-                options: {
-
-                    responsive: true,
-
-                    plugins: {
-
-                        title: {
-
-                            display: true,
-
-                            text:
-                                "Owl Box Occupancy by Hour"
-                        }
-
+                        ]
                     },
 
 
-                    scales: {
+                    options: {
 
-                        y: {
+                        responsive: true,
 
-                            beginAtZero: true,
 
-                            ticks: {
-                                precision: 0
-                            },
+                        plugins: {
 
                             title: {
 
                                 display: true,
 
                                 text:
-                                    "Occupied Readings"
+                                    "Owl Box Occupancy by Hour"
                             }
+
                         },
 
 
-                        x: {
+                        scales: {
 
-                            title: {
+                            y: {
 
-                                display: true,
+                                beginAtZero: true,
 
-                                text:
-                                    "Hour of Day"
+                                ticks: {
+
+                                    precision: 0
+                                },
+
+                                title: {
+
+                                    display: true,
+
+                                    text:
+                                        "Occupied Readings"
+                                }
+                            },
+
+
+                            x: {
+
+                                title: {
+
+                                    display: true,
+
+                                    text:
+                                        "Hour of Day"
+                                }
                             }
+
                         }
 
                     }
 
                 }
-
-            }
-        );
+            );
     }
 
 
@@ -474,41 +544,43 @@ function createCharts(data) {
 
     if (tempChartElement) {
 
-        tempChart = new Chart(
-            tempChartElement,
-            {
-                type: "line",
+        tempChart =
+            new Chart(
+                tempChartElement,
+                {
 
-                data: {
+                    type: "line",
 
-                    labels:
-                        temperatureTimes,
+                    data: {
 
-                    datasets: [
+                        labels:
+                            temperatureTimes,
 
-                        {
+                        datasets: [
 
-                            label:
-                                "Temperature (°F)",
+                            {
 
-                            data:
-                                temperatures,
+                                label:
+                                    "Temperature (°F)",
 
-                            tension: 0.3
-                        }
+                                data:
+                                    temperatures,
 
-                    ]
-                },
+                                tension: 0.3
+                            }
+
+                        ]
+                    },
 
 
-                options: {
+                    options: {
 
-                    responsive: true
+                        responsive: true
+
+                    }
 
                 }
-
-            }
-        );
+            );
     }
 
 }
@@ -516,7 +588,7 @@ function createCharts(data) {
 
 
 // ============================================================
-// NATIVE SHARE BUTTON
+// SHARE BUTTON
 // ============================================================
 
 const shareBtn =
@@ -525,9 +597,7 @@ const shareBtn =
     );
 
 
-// Hide button if browser doesn't support
-// native sharing
-
+// Hide share button if unsupported
 if (
     shareBtn &&
     !navigator.share
@@ -539,7 +609,6 @@ if (
 
 
 // Share website
-
 shareBtn?.addEventListener(
     "click",
     async () => {
@@ -553,7 +622,6 @@ shareBtn?.addEventListener(
 
                 url:
                     window.location.href
-
             });
 
         } catch (err) {
