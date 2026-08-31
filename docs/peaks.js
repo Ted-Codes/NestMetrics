@@ -11,6 +11,71 @@ let tempChart;
 
 
 // ============================================================
+// PROPER CSV PARSER
+// ============================================================
+// Handles quoted fields, commas inside quotes, and quoted
+// fields that contain literal newlines (like your
+// "Temperature\n" header). A naive .split("\n") /
+// .split(",") breaks on all of these.
+// ============================================================
+
+function parseCSV(text) {
+
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+
+        const char = text[i];
+        const next = text[i + 1];
+
+        if (inQuotes) {
+
+            if (char === '"' && next === '"') {
+                // Escaped quote inside a quoted field
+                field += '"';
+                i++;
+            } else if (char === '"') {
+                inQuotes = false;
+            } else {
+                field += char;
+            }
+
+        } else {
+
+            if (char === '"') {
+                inQuotes = true;
+            } else if (char === ',') {
+                row.push(field);
+                field = "";
+            } else if (char === '\r') {
+                // ignore, \n handles the line break
+            } else if (char === '\n') {
+                row.push(field);
+                field = "";
+                rows.push(row);
+                row = [];
+            } else {
+                field += char;
+            }
+        }
+    }
+
+    // Push the last field/row if the file doesn't end with \n
+    if (field.length > 0 || row.length > 0) {
+        row.push(field);
+        rows.push(row);
+    }
+
+    // Drop any fully-empty trailing rows
+    return rows.filter(r => r.some(cell => cell.trim() !== ""));
+}
+
+
+
+// ============================================================
 // LOAD DATA
 // ============================================================
 
@@ -24,12 +89,9 @@ async function loadData() {
 
         const csvText = await response.text();
 
-        const rows = csvText.trim().split("\n");
+        const data = parseCSV(csvText);
 
-        // Convert CSV rows into arrays
-        const data = rows.map(row => row.split(","));
-
-        // Remove header
+        // Remove header row
         data.shift();
 
         // Make sure data exists
@@ -44,16 +106,21 @@ async function loadData() {
 
         /*
         ========================================================
-        GOOGLE SHEET COLUMNS
+        GOOGLE SHEET COLUMNS (confirmed from actual sheet)
         ========================================================
 
-        0 = Time Stamp
-        1 = Time Stamp
-        2 = Baby owl       → IGNORE
-        3 = Occupancy      → USE
-        4 = Confidence     → IGNORE
-        5 = Temperature    → USE
-        6 = Weather        → USE
+        0 = Timestamp (raw, e.g. 8/16/2026 20:46:17) → IGNORE
+        1 = Time (formatted, e.g. 08-17-2026 04:46 AM) → USE
+        2 = Baby Owl Number                            → IGNORE
+        3 = Occupancy status ("Occupied"/etc.)         → USE
+        4 = Confidence                                 → IGNORE
+        5 = Temperature                                → USE
+        6 = Weather                                    → USE
+
+        Note: the sheet's header labels column 3 as
+        "Adult Owl Number" but the actual values in that
+        column are occupancy strings like "Occupied", so
+        we read it as occupancy, same as before.
 
         ========================================================
         */
@@ -90,16 +157,8 @@ async function loadData() {
 
         if (owlCountElement) {
 
-            if (isOccupied) {
-
-                owlCountElement.textContent =
-                    "Occupied 🦉";
-
-            } else {
-
-                owlCountElement.textContent =
-                    "Unoccupied";
-            }
+            owlCountElement.textContent =
+                isOccupied ? "Occupied 🦉" : "Unoccupied";
         }
 
 
@@ -113,9 +172,7 @@ async function loadData() {
         if (occupancyElement) {
 
             occupancyElement.textContent =
-                isOccupied
-                    ? "Occupied"
-                    : "Unoccupied";
+                isOccupied ? "Occupied" : "Unoccupied";
         }
 
 
@@ -129,7 +186,7 @@ async function loadData() {
         if (temperatureElement) {
 
             temperatureElement.textContent =
-                temperature + "°F";
+                temperature !== "" ? temperature + "°F" : "N/A";
         }
 
 
@@ -143,7 +200,7 @@ async function loadData() {
         if (weatherElement) {
 
             weatherElement.textContent =
-                weather;
+                weather !== "" ? weather : "N/A";
         }
 
 
@@ -226,6 +283,9 @@ async function loadData() {
 
 // ============================================================
 // PARSE GOOGLE SHEETS TIMESTAMP
+// ============================================================
+// Handles both M/D/YYYY and MM-DD-YYYY, with optional
+// leading zeros, followed by H:MM and an optional AM/PM.
 // ============================================================
 
 function parseSheetTimestamp(str) {
@@ -653,4 +713,3 @@ setInterval(
     loadData,
     60000
 );
-```
