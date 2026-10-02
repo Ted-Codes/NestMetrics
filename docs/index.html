@@ -9,8 +9,43 @@
     <!-- Styling -->
     <link rel="stylesheet" href="style.css">
 
-    <!-- Chart.js for graphs -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js for graphs, plus the date adapter that powers the time axis (must load after Chart.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+    <!-- Small additions for the new time line and chart controls (safe to move into style.css) -->
+    <style>
+        .card p.sub-time {
+            font-size: 0.95rem;
+            opacity: 0.75;
+            margin-top: 4px;
+        }
+        .range-toggle {
+            display: flex;
+            gap: 8px;
+            margin: 8px 0 12px;
+            flex-wrap: wrap;
+        }
+        .range-btn {
+            padding: 6px 14px;
+            border: 1px solid #888;
+            border-radius: 999px;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .range-btn.active {
+            background: #2f6fed;
+            border-color: #2f6fed;
+            color: #fff;
+        }
+        .card p.chart-summary {
+            font-size: 0.85rem;
+            opacity: 0.75;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 
 <!-- Data source for this page (script.js falls back to the default sheet if this is removed) -->
@@ -73,14 +108,24 @@
             <div class="card">
                 <h2>🕒 Last Updated</h2>
                 <p id="updated">Loading...</p>
+                <p id="updated-cali" class="sub-time">Loading...</p>
             </div>
 
         </section>
 
-        <!-- Graphs -->
+        <!-- Falcon Graph -->
         <section class="card">
             <h2>📈 Falcon Activity</h2>
+
+            <div class="range-toggle">
+                <button type="button" class="range-btn active" data-range="24h">Last 24 hours</button>
+                <button type="button" class="range-btn" data-range="7d">Last 7 days</button>
+            </div>
+
             <canvas id="owlChart"></canvas>
+
+            <p id="chart-summary" class="chart-summary"></p>
+            <p class="chart-summary">Each reading is taken every 30 minutes. Gaps in the line mean no data was recorded. Tap "Confidence (%)" in the legend to overlay the AI's confidence.</p>
         </section>
 
         <!-- Temperature & Weather -->
@@ -102,6 +147,7 @@
         <section class="card">
             <h2>🌡 Temperature History</h2>
             <canvas id="tempChart"></canvas>
+            <p class="chart-summary">Follows the time range selected above the falcon chart.</p>
         </section>
 
     </main>
