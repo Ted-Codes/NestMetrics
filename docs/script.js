@@ -1,88 +1,81 @@
-// Google Sheet CSV link
-const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQRn5zJpYlQn5Z4rgTvmzTYIwwYkcCXDXDETmUVSn8fMkUxJX_lVAzobr6ahJ8cwT_00rl9phb5gNjb/pub?output=csv";
+// ==========================
+// NestMetrics - script.js
+// ==========================
+
+// Google Sheet CSV link (a page can override this with <body data-sheet="...">)
+const DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSIDCT6OHYQGa_YHxcmMhp1IZuUfJzBqbV5n1MlZqvBzfM4zWyvd4jyo5Gi2vPgoGeCVXbmRwOU0jnx/pub?output=csv";
+const sheetURL = document.body.dataset.sheet || DEFAULT_SHEET_URL;
+
+const MAX_TEMP_POINTS = 100; // how many recent readings to show on the temperature chart
 
 let owlChart;
 let tempChart;
 
-// Load data from Google Sheets
-async function loadData() {
-    try {
-        const response = await fetch(sheetURL + "&cache=" + Date.now());
-        const csvText = await response.text();
-        const rows = csvText.trim().split("\n");
+/*
+Sheet columns:
+0 = Timestamp      (form submit time, ignored)
+1 = Time           (capture time, "MM-DD-YYYY H:MM AM/PM")
+2 = Falcon_Count
+3 = Confidence     (percent)
+4 = Temperature    (°F)
+5 = Weather
+*/
 
-        // Convert CSV rows into arrays
-        const data = rows.map(row => row.split(","));
-
-        // Remove header row
-        data.shift();
-
-        // Get newest row
-        const latest = data[data.length - 1];
-
-        /*
-        Columns:
-        0 = Timestamp (form submit time, ignored)
-        1 = Time Stamp (capture time)
-        2 = Baby Owl Number
-        3 = Adult Owl Number
-        4 = Confidence Percent
-        5 = Temperature (Degrees)
-        6 = Weather
-        */
-        const beforebabyCount = Number(latest[2]);
-        const beforeadultCount = Number(latest[4]);
-
-        const babyCount = beforebabyCount;
-        const adultCount = beforeadultCount;
-
-        const temperature = latest[5];
-        const weather = latest[6] || "";
-
-        document.getElementById("owl-count").textContent =
-            babyCount + " 🦉";
-        document.getElementById("adult-owl-count").textContent =
-            adultCount + "%";
-        document.getElementById("temperature").textContent =
-            temperature + "°F";
-        document.getElementById("weather").textContent =
-            weather;
-        document.getElementById("updated").textContent =
-            latest[1];
-
-        // Rain / adult-in-box status
-        const isRaining = weather.toLowerCase().includes("rain");
-        const adultInBox = adultCount > 0;
-        const rainStatusEl = document.getElementById("rain-status");
-        if (rainStatusEl) {
-            if (isRaining && adultInBox) {
-                rainStatusEl.textContent = "☔ Raining — Adult in box";
-            } else if (isRaining && !adultInBox) {
-                rainStatusEl.textContent = "☔ Raining — Adult left box";
-            } else if (adultInBox) {
-                rainStatusEl.textContent = "☀️ Not raining — Adult in box";
-            } else {
-                rainStatusEl.textContent = "☀️ Not raining — Adult not in box";
-            }
-        }
-
-        createCharts(data);
-    } catch (error) {
-        console.error("Error loading spreadsheet:", error);
-        document.getElementById("owl-count").textContent = "Error";
-    }
+// Small helper: set text on an element if it exists
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
 }
 
-// Parses Google Sheets' "MM-DD-YYYY H:MM AM/PM" timestamp format
-// across all browsers (Safari's Date() is much stricter than Chrome's)
-// Parses Google Sheets' "MM-DD-YYYY H:MM AM/PM" timestamp format
-// across all browsers (Safari's Date() is much stricter than Chrome's)
+// Proper CSV parser (handles quoted fields, commas inside quotes, \r\n line endings)
+function parseCSV(text) {
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+
+        if (inQuotes) {
+            if (c === '"' && text[i + 1] === '"') {
+                field += '"';
+                i++;
+            } else if (c === '"') {
+                inQuotes = false;
+            } else {
+                field += c;
+            }
+        } else if (c === '"') {
+            inQuotes = true;
+        } else if (c === ",") {
+            row.push(field);
+            field = "";
+        } else if (c === "\n" || c === "\r") {
+            if (c === "\r" && text[i + 1] === "\n") i++;
+            row.push(field);
+            field = "";
+            if (row.some(cell => cell.trim() !== "")) rows.push(row);
+            row = [];
+        } else {
+            field += c;
+        }
+    }
+
+    // Last row without trailing newline
+    row.push(field);
+    if (row.some(cell => cell.trim() !== "")) rows.push(row);
+
+    return rows;
+}
+
+// Parses "MM-DD-YYYY H:MM AM/PM" (also accepts "/" separators and 24-hour times)
+// manually, because Safari's Date() parsing is much stricter than Chrome's
 function parseSheetTimestamp(str) {
     if (!str) return new Date(NaN);
-    const trimmed = str.trim();
 
-    const match = trimmed.match(
-        /^(\d{1,2})-(\d{1,2})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
+    const match = str.trim().match(
+        /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i
     );
     if (!match) return new Date(NaN);
 
@@ -95,131 +88,173 @@ function parseSheetTimestamp(str) {
         if (!isPM && hours === 12) hours = 0; // 12 AM = midnight
     }
 
-    return new Date(
-        Number(year), Number(month) - 1, Number(day),
-        hours, Number(minutes), 0
-    );
+    return new Date(Number(year), Number(month) - 1, Number(day), hours, Number(minutes), 0);
 }
 
-function createCharts(data) {
-    // Track the peak owlet count per calendar day, for the last 7 days
-    const dailyMaxBabies = {}; // "M/D/YYYY" -> max baby count that day
-    const temperatureTimes = [];
-    const temperatures = [];
+// Turn raw CSV rows into clean records, sorted oldest -> newest
+function toRecords(rows) {
+    return rows
+        .slice(1) // drop header
+        .map(r => ({
+            label: (r[1] || "").trim(),
+            time: parseSheetTimestamp(r[1]),
+            count: Number(r[2]),
+            confidence: Number(r[3]),
+            temperature: Number(r[4]),
+            weather: (r[5] || "").trim()
+        }))
+        .filter(rec => !isNaN(rec.time.getTime()) && !isNaN(rec.count))
+        .sort((a, b) => a.time - b.time);
+}
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    sevenDaysAgo.setHours(0, 0, 0, 0);
+// Load data from Google Sheets
+async function loadData() {
+    try {
+        const response = await fetch(sheetURL + "&cache=" + Date.now());
+        if (!response.ok) throw new Error("HTTP " + response.status);
 
-    data.forEach(row => {
-        const timestamp = parseSheetTimestamp(row[1]);
-        const babyNumber = Number(row[2]);
-        const temperature = Number(row[5]);
+        const csvText = await response.text();
+        const records = toRecords(parseCSV(csvText));
 
-        // Temperature chart
-        temperatureTimes.push(row[1]);
-        temperatures.push(temperature);
+        if (records.length === 0) {
+            setText("owl-count", "No data");
+            setText("adult-owl-count", "--");
+            setText("updated", "--");
+            setText("temperature", "--");
+            setText("weather", "--");
+            return;
+        }
 
-        // Owl activity: keep the largest reading per day
-        if (!isNaN(timestamp.getTime()) && timestamp >= sevenDaysAgo) {
-            const dayKey = timestamp.toLocaleDateString(); // e.g. "7/22/2026"
-            if (!(dayKey in dailyMaxBabies) || babyNumber > dailyMaxBabies[dayKey]) {
-                dailyMaxBabies[dayKey] = babyNumber;
-            }
+        const latest = records[records.length - 1];
+
+        setText("owl-count", latest.count + " 🦅");
+        setText("adult-owl-count", isNaN(latest.confidence) ? "--" : latest.confidence + "%");
+        setText("temperature", isNaN(latest.temperature) ? "--" : latest.temperature.toFixed(1) + "°F");
+        setText("weather", latest.weather || "--");
+        setText("updated", latest.label);
+
+        createCharts(records);
+    } catch (error) {
+        console.error("Error loading spreadsheet:", error);
+        setText("owl-count", "Error");
+        setText("adult-owl-count", "Error");
+        setText("updated", "Error");
+        setText("temperature", "Error");
+        setText("weather", "Error");
+    }
+}
+
+// Build a sortable "YYYY-M-D" key for a date
+function dayKey(d) {
+    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+}
+
+function createCharts(records) {
+    // ---- Daily peak falcon count, 7 days ending on the newest reading ----
+    // (anchored to the data rather than "today" so a timezone difference between
+    // the camera and the viewer can't push the newest day off the chart)
+    const lastDay = new Date(records[records.length - 1].time);
+    lastDay.setHours(0, 0, 0, 0);
+
+    const dailyMax = {};
+    records.forEach(rec => {
+        const key = dayKey(rec.time);
+        if (!(key in dailyMax) || rec.count > dailyMax[key]) {
+            dailyMax[key] = rec.count;
         }
     });
 
-    // Build the last 7 calendar days in order, even if some have no data
     const labels = [];
     const peakCounts = [];
     for (let i = 6; i >= 0; i--) {
-        const d = new Date();
+        const d = new Date(lastDay);
         d.setDate(d.getDate() - i);
-        const dayKey = d.toLocaleDateString();
         labels.push(d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }));
-        peakCounts.push(dailyMaxBabies[dayKey] || 0);
+        peakCounts.push(dailyMax[dayKey(d)] || 0);
     }
+
+    // ---- Temperature history (most recent readings) ----
+    const recent = records.slice(-MAX_TEMP_POINTS);
+    const temperatureTimes = recent.map(r => r.label);
+    const temperatures = recent.map(r => (isNaN(r.temperature) ? null : r.temperature));
 
     // Destroy old charts before redrawing
     if (owlChart) owlChart.destroy();
     if (tempChart) tempChart.destroy();
 
-    // ==========================
-    // Owl Activity Chart (daily peak)
-    // ==========================
-    owlChart = new Chart(
-        document.getElementById("owlChart"),
-        {
-            type: "bar",
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: "Peak Owl Count",
-                        data: peakCounts,
-                        borderWidth: 1,
-                        borderRadius: 6
-                    }
-                ]
+    // Falcon activity chart
+    owlChart = new Chart(document.getElementById("owlChart"), {
+        type: "bar",
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Peak Falcon Count",
+                data: peakCounts,
+                borderWidth: 1,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: "Falcon Count Over the Last 7 Days (Daily Peak)"
+                }
             },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: "Owl Count Over the Last 7 Days (Daily Peak)"
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { precision: 0 }
-                    }
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0 }
                 }
             }
         }
-    );
+    });
 
-    // ==========================
-    // Temperature Chart
-    // ==========================
-    tempChart = new Chart(
-        document.getElementById("tempChart"),
-        {
-            type: "line",
-            data: {
-                labels: temperatureTimes,
-                datasets: [{
-                    label: "Temperature (°F)",
-                    data: temperatures,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true
+    // Temperature chart
+    tempChart = new Chart(document.getElementById("tempChart"), {
+        type: "line",
+        data: {
+            labels: temperatureTimes,
+            datasets: [{
+                label: "Temperature (°F)",
+                data: temperatures,
+                tension: 0.3,
+                spanGaps: true
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { ticks: { maxTicksLimit: 8 } }
             }
         }
-    );
+    });
 }
 
-const shareBtn = document.getElementById('nativeShareBtn');
+// ==========================
+// Share button
+// ==========================
+const shareBtn = document.getElementById("nativeShareBtn");
 
 // Hide the button if the browser doesn't support native sharing
 if (shareBtn && !navigator.share) {
-  shareBtn.style.display = 'none';
+    shareBtn.style.display = "none";
 }
 
 // Trigger the native device share menu when clicked
-shareBtn?.addEventListener('click', async () => {
-  try {
-    await navigator.share({
-      title: document.title,
-      url: window.location.href
+if (shareBtn) {
+    shareBtn.addEventListener("click", async () => {
+        try {
+            await navigator.share({
+                title: document.title,
+                url: window.location.href
+            });
+        } catch (err) {
+            console.log("Share canceled or failed:", err);
+        }
     });
-  } catch (err) {
-    console.log('Share canceled or failed:', err);
-  }
-});
+}
 
 // Initial load
 loadData();
