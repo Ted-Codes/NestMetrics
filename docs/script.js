@@ -27,6 +27,9 @@ const RANGES = {
     "7d": 7 * 24 * 60 * 60 * 1000
 };
 
+// Temperature history always shows the last 3 days (independent of the falcon chart toggle)
+const TEMP_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
 let owlChart;
 let tempChart;
 let allRecords = [];
@@ -195,14 +198,13 @@ function buildSeries(records, valueFn) {
 }
 
 // Shared x-axis: a real time axis in Orange time
-function timeScale(start, end) {
-    const is24h = currentRange === "24h";
+function timeScale(start, end, unit) {
     return {
         type: "time",
         min: start,
         max: end,
         time: {
-            unit: is24h ? "hour" : "day",
+            unit: unit,
             tooltipFormat: "MMM d, h:mm a",
             displayFormats: {
                 hour: "h a",
@@ -210,7 +212,7 @@ function timeScale(start, end) {
             }
         },
         ticks: {
-            maxTicksLimit: is24h ? 8 : 8,
+            maxTicksLimit: 8,
             autoSkip: true,
             maxRotation: 0
         },
@@ -310,7 +312,7 @@ function createCharts(records) {
                     }
                 },
                 scales: {
-                    x: timeScale(start, end),
+                    x: timeScale(start, end, currentRange === "24h" ? "hour" : "day"),
                     y: {
                         beginAtZero: true,
                         suggestedMax: Math.max(1, peak) + 1,
@@ -331,8 +333,10 @@ function createCharts(records) {
     }
 
     // ==========================
-    // Temperature over time (follows the same range)
+    // Temperature over time (always the last 3 days)
     // ==========================
+    const tempStart = end - TEMP_WINDOW_MS;
+    const tempInRange = records.filter(r => r.time.getTime() >= tempStart);
     const tempCanvas = document.getElementById("tempChart");
     if (tempCanvas) {
         tempChart = new Chart(tempCanvas, {
@@ -340,11 +344,11 @@ function createCharts(records) {
             data: {
                 datasets: [{
                     label: "Temperature (°F)",
-                    data: buildSeries(inRange, r => (isNaN(r.temperature) ? null : r.temperature)),
+                    data: buildSeries(tempInRange, r => (isNaN(r.temperature) ? null : r.temperature)),
                     borderColor: "#e4572e",
                     backgroundColor: "rgba(228, 87, 46, 0.12)",
                     tension: 0.3,
-                    pointRadius: showDots ? 3 : 0,
+                    pointRadius: 0,
                     pointHoverRadius: 5,
                     spanGaps: false
                 }]
@@ -360,7 +364,7 @@ function createCharts(records) {
                     }
                 },
                 scales: {
-                    x: timeScale(start, end),
+                    x: timeScale(tempStart, end, "day"),
                     y: {
                         title: { display: true, text: "°F" }
                     }
@@ -419,4 +423,4 @@ if (shareBtn) {
 loadData();
 
 // Refresh every 5 minutes
-setInterval(loadData, REFRESH_MS);
+setInterval(loadData, REFRESH_MS);;
