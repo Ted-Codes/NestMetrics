@@ -13,13 +13,14 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
-<body>
+<!-- Data source for this page (script.js falls back to the default sheet if this is removed) -->
+<body data-sheet="https://docs.google.com/spreadsheets/d/e/2PACX-1vSIDCT6OHYQGa_YHxcmMhp1IZuUfJzBqbV5n1MlZqvBzfM4zWyvd4jyo5Gi2vPgoGeCVXbmRwOU0jnx/pub?output=csv">
 
     <header>
         <h1>NestMetrics 🪹</h1>
         <p>Beta</p>
-        <p>Smart Bird & Owl Box Analytics | Live Wildlife Monitoring Dashboard</p>
-        <button id="nativeShareBtn" class="share-button">    🔗 Share 🔗    </button>
+        <p>Smart Bird &amp; Owl Box Analytics | Live Wildlife Monitoring Dashboard</p>
+        <button id="nativeShareBtn" class="share-button">🔗 Share 🔗</button>
     </header>
 
 
@@ -31,28 +32,28 @@
             <a href="stream3.html" class="stream-btn">Stream 3 | Livermore, USA</a>
             <a href="about.html" class="stream-btn">About</a>
         </nav>
-        
+
         <!-- Live Stream -->
         <section class="card">
-            <h2>🎥 Livestream Courtesy of Charles Stuart University, Orange, AUS</h2>
+            <h2>🎥 Livestream Courtesy of Charles Sturt University, Orange, AUS</h2>
             <p>Please support the original YouTube channel by watching and subscribing.</p>
 
             <div class="video-container">
-                <iframe 
-                    width="560" 
-                    height="315" 
-                    src="https://www.youtube.com/embed/gnF7_gRHHMQ?autoplay=1&mute=1" 
-                    title="YouTube video player" 
-                    frameborder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                    referrerpolicy="strict-origin-when-cross-origin" 
+                <iframe
+                    width="560"
+                    height="315"
+                    src="https://www.youtube.com/embed/gnF7_gRHHMQ?autoplay=1&mute=1"
+                    title="YouTube video player"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
                     allowfullscreen>
                 </iframe>
             </div>
-            <p>   </p>
-            <a href="https://science-health.csu.edu.au/falconcam">Charles Stuart University Website</a>
-            <p>NestMetrics analyzes barn bird & owl livestreams using computer vision to measure owl activity and behavior patterns over time.</p>
-            <p>Birds may overlap or be partially obscured, so the AI may have an inaccurate count of the bird</p>
+            <p></p>
+            <a href="https://science-health.csu.edu.au/falconcam">Charles Sturt University Website</a>
+            <p>NestMetrics analyzes barn bird &amp; falcon livestreams using computer vision to measure activity and behavior patterns over time.</p>
+            <p>Birds may overlap or be partially obscured, so the AI may have an inaccurate count of the birds.</p>
         </section>
 
 
@@ -75,7 +76,7 @@
             </div>
 
         </section>
-        
+
         <!-- Graphs -->
         <section class="card">
             <h2>📈 Falcon Activity</h2>
@@ -83,7 +84,6 @@
         </section>
 
         <!-- Temperature & Weather -->
-
         <section class="weather-dashboard-grid">
 
             <div class="card">
@@ -95,11 +95,10 @@
                 <h2>🌦️ Current Weather</h2>
                 <p id="weather">Loading...</p>
             </div>
-            
-        </section>  
 
-        <!-- Temp Graph -->        
+        </section>
 
+        <!-- Temp Graph -->
         <section class="card">
             <h2>🌡 Temperature History</h2>
             <canvas id="tempChart"></canvas>
@@ -111,7 +110,6 @@
     <footer>
         <p>Livestream embedded from YouTube</p>
         <p>NestMetrics Software, Analytics, and Website © 2026 Ted Brzustowicz. All Rights Reserved</p>
-
     </footer>
 
 
