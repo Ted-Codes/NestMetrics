@@ -6,20 +6,31 @@
 const DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSIDCT6OHYQGa_YHxcmMhp1IZuUfJzBqbV5n1MlZqvBzfM4zWyvd4jyo5Gi2vPgoGeCVXbmRwOU0jnx/pub?output=csv";
 const sheetURL = document.body.dataset.sheet || DEFAULT_SHEET_URL;
 
-const MAX_TEMP_POINTS = 100; // how many recent readings to show on the temperature chart
-
-let owlChart;
-let tempChart;
-
 /*
 Sheet columns:
-0 = Timestamp      (form submit time, ignored)
-1 = Time           (capture time, "MM-DD-YYYY H:MM AM/PM")
+0 = Timestamp      (form submit time = California time, "M/D/YYYY H:MM:SS")
+1 = Time           (capture time = Orange, AUS time, "MM-DD-YYYY H:MM AM/PM")
 2 = Falcon_Count
 3 = Confidence     (percent)
 4 = Temperature    (°F)
 5 = Weather
 */
+
+// Data is collected every 30 minutes, so there's no point refreshing every minute
+const REFRESH_MS = 5 * 60 * 1000;
+const READING_INTERVAL_MS = 30 * 60 * 1000;
+// If two readings are more than 3 intervals apart, break the line (shows a gap, not a fake 0)
+const GAP_MS = READING_INTERVAL_MS * 3;
+
+const RANGES = {
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000
+};
+
+let owlChart;
+let tempChart;
+let allRecords = [];
+let currentRange = "24h";
 
 // Small helper: set text on an element if it exists
 function setText(id, text) {
@@ -69,7 +80,7 @@ function parseCSV(text) {
     return rows;
 }
 
-// Parses "MM-DD-YYYY H:MM AM/PM" (also accepts "/" separators and 24-hour times)
+// Parses "MM-DD-YYYY H:MM AM/PM" and "M/D/YYYY H:MM:SS" style timestamps
 // manually, because Safari's Date() parsing is much stricter than Chrome's
 function parseSheetTimestamp(str) {
     if (!str) return new Date(NaN);
@@ -91,13 +102,26 @@ function parseSheetTimestamp(str) {
     return new Date(Number(year), Number(month) - 1, Number(day), hours, Number(minutes), 0);
 }
 
-// Turn raw CSV rows into clean records, sorted oldest -> newest
+// Friendly display, e.g. "Oct 2, 2026, 12:29 PM"
+function formatTime(date, fallback) {
+    if (!date || isNaN(date.getTime())) return fallback || "--";
+    return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+    });
+}
+
+// Turn raw CSV rows into clean records, sorted oldest -> newest (by Orange capture time)
 function toRecords(rows) {
     return rows
         .slice(1) // drop header
         .map(r => ({
+            submitted: parseSheetTimestamp(r[0]), // California time
             label: (r[1] || "").trim(),
-            time: parseSheetTimestamp(r[1]),
+            time: parseSheetTimestamp(r[1]),      // Orange time
             count: Number(r[2]),
             confidence: Number(r[3]),
             temperature: Number(r[4]),
@@ -114,123 +138,258 @@ async function loadData() {
         if (!response.ok) throw new Error("HTTP " + response.status);
 
         const csvText = await response.text();
-        const records = toRecords(parseCSV(csvText));
+        allRecords = toRecords(parseCSV(csvText));
 
-        if (records.length === 0) {
+        if (allRecords.length === 0) {
             setText("owl-count", "No data");
             setText("adult-owl-count", "--");
             setText("updated", "--");
+            setText("updated-cali", "--");
             setText("temperature", "--");
             setText("weather", "--");
             return;
         }
 
-        const latest = records[records.length - 1];
+        const latest = allRecords[allRecords.length - 1];
 
         setText("owl-count", latest.count + " 🦅");
         setText("adult-owl-count", isNaN(latest.confidence) ? "--" : latest.confidence + "%");
         setText("temperature", isNaN(latest.temperature) ? "--" : latest.temperature.toFixed(1) + "°F");
         setText("weather", latest.weather || "--");
-        setText("updated", latest.label);
-
-        createCharts(records);
+        setText("updated", "Orange: " + formatTime(latest.time, latest.label));
+        setText("updated-cali", "California: " + formatTime(latest.submitted));
     } catch (error) {
         console.error("Error loading spreadsheet:", error);
         setText("owl-count", "Error");
         setText("adult-owl-count", "Error");
         setText("updated", "Error");
+        setText("updated-cali", "Error");
         setText("temperature", "Error");
         setText("weather", "Error");
+        return;
+    }
+
+    // Charts are separate so a chart problem never blanks the cards above
+    try {
+        createCharts(allRecords);
+    } catch (error) {
+        console.error("Error drawing charts:", error);
     }
 }
 
-// Build a sortable "YYYY-M-D" key for a date
-function dayKey(d) {
-    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+// Turn records into {x, y} points; inserts a null point wherever data is missing
+// so Chart.js draws a gap instead of connecting across it
+function buildSeries(records, valueFn) {
+    const points = [];
+    records.forEach((rec, i) => {
+        if (i > 0) {
+            const prev = records[i - 1].time.getTime();
+            const curr = rec.time.getTime();
+            if (curr - prev > GAP_MS) {
+                points.push({ x: Math.round((prev + curr) / 2), y: null });
+            }
+        }
+        points.push({ x: rec.time.getTime(), y: valueFn(rec) });
+    });
+    return points;
+}
+
+// Shared x-axis: a real time axis in Orange time
+function timeScale(start, end) {
+    const is24h = currentRange === "24h";
+    return {
+        type: "time",
+        min: start,
+        max: end,
+        time: {
+            unit: is24h ? "hour" : "day",
+            tooltipFormat: "MMM d, h:mm a",
+            displayFormats: {
+                hour: "h a",
+                day: "EEE MMM d"
+            }
+        },
+        ticks: {
+            maxTicksLimit: is24h ? 8 : 8,
+            autoSkip: true,
+            maxRotation: 0
+        },
+        title: {
+            display: true,
+            text: "Time (Orange, AUS)"
+        }
+    };
 }
 
 function createCharts(records) {
-    // ---- Daily peak falcon count, 7 days ending on the newest reading ----
-    // (anchored to the data rather than "today" so a timezone difference between
-    // the camera and the viewer can't push the newest day off the chart)
-    const lastDay = new Date(records[records.length - 1].time);
-    lastDay.setHours(0, 0, 0, 0);
-
-    const dailyMax = {};
-    records.forEach(rec => {
-        const key = dayKey(rec.time);
-        if (!(key in dailyMax) || rec.count > dailyMax[key]) {
-            dailyMax[key] = rec.count;
-        }
-    });
-
-    const labels = [];
-    const peakCounts = [];
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date(lastDay);
-        d.setDate(d.getDate() - i);
-        labels.push(d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }));
-        peakCounts.push(dailyMax[dayKey(d)] || 0);
+    if (typeof Chart === "undefined") {
+        console.error("Chart.js did not load");
+        return;
     }
 
-    // ---- Temperature history (most recent readings) ----
-    const recent = records.slice(-MAX_TEMP_POINTS);
-    const temperatureTimes = recent.map(r => r.label);
-    const temperatures = recent.map(r => (isNaN(r.temperature) ? null : r.temperature));
+    // Window anchored to the newest reading (not "now"), so the timezone gap
+    // between the camera and the viewer can't cut off the latest data
+    const end = records[records.length - 1].time.getTime();
+    const start = end - RANGES[currentRange];
+    const inRange = records.filter(r => r.time.getTime() >= start);
+    const showDots = currentRange === "24h";
+
+    // ---- Summary line under the falcon chart ----
+    const counts = inRange.map(r => r.count);
+    const peak = Math.max(...counts);
+    const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
+    const seenPct = Math.round((counts.filter(c => c > 0).length / counts.length) * 100);
+    setText(
+        "chart-summary",
+        "Readings: " + counts.length + "  ·  Peak: " + peak +
+        "  ·  Average: " + avg.toFixed(1) + "  ·  Falcon(s) seen in " + seenPct + "% of readings"
+    );
 
     // Destroy old charts before redrawing
     if (owlChart) owlChart.destroy();
     if (tempChart) tempChart.destroy();
 
-    // Falcon activity chart
-    owlChart = new Chart(document.getElementById("owlChart"), {
-        type: "bar",
-        data: {
-            labels: labels,
-            datasets: [{
-                label: "Peak Falcon Count",
-                data: peakCounts,
-                borderWidth: 1,
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                title: {
-                    display: true,
-                    text: "Falcon Count Over the Last 7 Days (Daily Peak)"
-                }
+    // ==========================
+    // Falcon count over time (step chart)
+    // ==========================
+    const owlCanvas = document.getElementById("owlChart");
+    if (owlCanvas) {
+        owlChart = new Chart(owlCanvas, {
+            type: "line",
+            data: {
+                datasets: [
+                    {
+                        label: "Falcon count",
+                        data: buildSeries(inRange, r => r.count),
+                        yAxisID: "y",
+                        // 'middle' = the count changes halfway between two readings,
+                        // since we only know it changed sometime in that 30-minute window
+                        stepped: "middle",
+                        borderColor: "#2f6fed",
+                        backgroundColor: "rgba(47, 111, 237, 0.15)",
+                        borderWidth: 2,
+                        fill: true,
+                        pointRadius: showDots ? 3 : 0,
+                        pointHoverRadius: 5,
+                        spanGaps: false
+                    },
+                    {
+                        // Click "Confidence" in the legend to show/hide this line
+                        label: "Confidence (%)",
+                        data: buildSeries(inRange, r => (isNaN(r.confidence) ? null : r.confidence)),
+                        yAxisID: "y2",
+                        hidden: true,
+                        borderColor: "rgba(230, 126, 34, 0.85)",
+                        borderDash: [5, 4],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        spanGaps: false
+                    }
+                ]
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: { precision: 0 }
+            options: {
+                responsive: true,
+                interaction: { mode: "nearest", axis: "x", intersect: false },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: currentRange === "24h"
+                            ? "Falcons Detected - Last 24 Hours"
+                            : "Falcons Detected - Last 7 Days"
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                if (ctx.parsed.y === null) return "";
+                                return ctx.dataset.yAxisID === "y2"
+                                    ? "Confidence: " + ctx.parsed.y + "%"
+                                    : "Falcons: " + ctx.parsed.y;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: timeScale(start, end),
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax: Math.max(1, peak) + 1,
+                        ticks: { stepSize: 1, precision: 0 },
+                        title: { display: true, text: "Falcons detected" }
+                    },
+                    y2: {
+                        display: "auto",
+                        position: "right",
+                        min: 0,
+                        max: 100,
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: "Confidence (%)" }
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
-    // Temperature chart
-    tempChart = new Chart(document.getElementById("tempChart"), {
-        type: "line",
-        data: {
-            labels: temperatureTimes,
-            datasets: [{
-                label: "Temperature (°F)",
-                data: temperatures,
-                tension: 0.3,
-                spanGaps: true
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                x: { ticks: { maxTicksLimit: 8 } }
+    // ==========================
+    // Temperature over time (follows the same range)
+    // ==========================
+    const tempCanvas = document.getElementById("tempChart");
+    if (tempCanvas) {
+        tempChart = new Chart(tempCanvas, {
+            type: "line",
+            data: {
+                datasets: [{
+                    label: "Temperature (°F)",
+                    data: buildSeries(inRange, r => (isNaN(r.temperature) ? null : r.temperature)),
+                    borderColor: "#e4572e",
+                    backgroundColor: "rgba(228, 87, 46, 0.12)",
+                    tension: 0.3,
+                    pointRadius: showDots ? 3 : 0,
+                    pointHoverRadius: 5,
+                    spanGaps: false
+                }]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: "nearest", axis: "x", intersect: false },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => (ctx.parsed.y === null ? "" : ctx.parsed.y.toFixed(1) + "°F")
+                        }
+                    }
+                },
+                scales: {
+                    x: timeScale(start, end),
+                    y: {
+                        title: { display: true, text: "°F" }
+                    }
+                }
+            }
+        });
+    }
+}
+
+// ==========================
+// Range toggle (24 hours / 7 days)
+// ==========================
+document.querySelectorAll(".range-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        currentRange = btn.dataset.range;
+
+        document.querySelectorAll(".range-btn").forEach(b => {
+            b.classList.toggle("active", b === btn);
+        });
+
+        if (allRecords.length > 0) {
+            try {
+                createCharts(allRecords);
+            } catch (error) {
+                console.error("Error drawing charts:", error);
             }
         }
     });
-}
+});
 
 // ==========================
 // Share button
@@ -259,5 +418,5 @@ if (shareBtn) {
 // Initial load
 loadData();
 
-// Refresh every minute
-setInterval(loadData, 60000);
+// Refresh every 5 minutes
+setInterval(loadData, REFRESH_MS);
