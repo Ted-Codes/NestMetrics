@@ -227,3 +227,10 @@ footer {
 a:visited {
   color: royalblue; /* Replace 'blue' with the website's link color */
 }
+
+.card p.sub-time {
+            font-size: 0.95rem;
+            opacity: 0.75;
+            margin-top: 4px;
+        }
+
