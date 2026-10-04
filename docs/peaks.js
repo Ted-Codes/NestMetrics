@@ -2,77 +2,115 @@
 // NESTMETRICS - OWL BOX ANALYTICS
 // ============================================================
 
-// Google Sheet CSV link
+// ---------- CONFIG (change these per stream page) ----------
 const sheetURL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr18vuowtUDnqE_Sn2b9d_7lvAmGSvnPYaixiMnlhtWXSndXgcKQPn6NDmAtKmVkRf0_rw6Jr3ctIS/pub?output=csv";
 
-let owlChart;
-let tempChart;
+const LOCAL_LABEL = "UK";          // timezone of the owl box (sheet column 2)
+const CALI_LABEL  = "California";  // sheet column 1
+const TEMP_DAYS   = 3;             // temperature graph window
+const TEMP_UNIT   = "°F";
+
+/*
+ GOOGLE SHEET COLUMNS
+ 0 = Timestamp, California time (e.g. 8/16/2026 20:46:17)
+ 1 = Time, local time at the box  (e.g. 08-17-2026 04:46 AM)
+ 2 = Baby Owl Number  (ignored)
+ 3 = Occupancy ("Occupied" / anything else = unoccupied)
+ 4 = Confidence       (ignored)
+ 5 = Temperature
+ 6 = Weather
+*/
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+let owlChart, tempChart;
+let rows = [];            // cleaned, sorted rows
+let occupancyZone = "local";
+let occupancyMeta = { occ: [], total: [] };
 
 
 // ============================================================
-// PROPER CSV PARSER
-// ============================================================
-// Handles quoted fields, commas inside quotes, and quoted
-// fields that contain literal newlines (like your
-// "Temperature\n" header). A naive .split("\n") /
-// .split(",") breaks on all of these.
+// CSV PARSER (handles quotes, commas and newlines in fields)
 // ============================================================
 
 function parseCSV(text) {
-
-    const rows = [];
-    let row = [];
-    let field = "";
-    let inQuotes = false;
+    const out = [];
+    let row = [], field = "", inQuotes = false;
 
     for (let i = 0; i < text.length; i++) {
-
-        const char = text[i];
-        const next = text[i + 1];
+        const c = text[i], next = text[i + 1];
 
         if (inQuotes) {
-
-            if (char === '"' && next === '"') {
-                // Escaped quote inside a quoted field
-                field += '"';
-                i++;
-            } else if (char === '"') {
-                inQuotes = false;
-            } else {
-                field += char;
-            }
-
-        } else {
-
-            if (char === '"') {
-                inQuotes = true;
-            } else if (char === ',') {
-                row.push(field);
-                field = "";
-            } else if (char === '\r') {
-                // ignore, \n handles the line break
-            } else if (char === '\n') {
-                row.push(field);
-                field = "";
-                rows.push(row);
-                row = [];
-            } else {
-                field += char;
-            }
-        }
+            if (c === '"' && next === '"') { field += '"'; i++; }
+            else if (c === '"') inQuotes = false;
+            else field += c;
+        } else if (c === '"') inQuotes = true;
+        else if (c === ",") { row.push(field); field = ""; }
+        else if (c === "\r") { /* ignore */ }
+        else if (c === "\n") { row.push(field); field = ""; out.push(row); row = []; }
+        else field += c;
     }
 
-    // Push the last field/row if the file doesn't end with \n
-    if (field.length > 0 || row.length > 0) {
-        row.push(field);
-        rows.push(row);
-    }
-
-    // Drop any fully-empty trailing rows
-    return rows.filter(r => r.some(cell => cell.trim() !== ""));
+    if (field.length > 0 || row.length > 0) { row.push(field); out.push(row); }
+    return out.filter(r => r.some(cell => cell.trim() !== ""));
 }
 
+
+// ============================================================
+// TIME HELPERS
+// ============================================================
+// Timestamps are stored as "wall clock" milliseconds (built with
+// Date.UTC) so the viewer's own timezone / DST never shifts them.
+// Accepts M/D/YYYY or MM-DD-YYYY, 24h or AM/PM, optional seconds.
+// ============================================================
+
+function parseTimestamp(str) {
+    if (!str) return null;
+
+    const m = str.trim().match(
+        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[\sT,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i
+    );
+    if (!m) return null;
+
+    const [, mo, d, y, rawH, mi, s, ap] = m;
+    let h = Number(rawH);
+
+    if (ap) {
+        const pm = ap.toUpperCase() === "PM";
+        if (pm && h !== 12) h += 12;
+        if (!pm && h === 12) h = 0;
+    }
+
+    return Date.UTC(Number(y), Number(mo) - 1, Number(d), h, Number(mi), Number(s || 0));
+}
+
+function fmtTime(ms) {
+    if (ms == null) return "N/A";
+    const dt = new Date(ms);
+    let h = dt.getUTCHours();
+    const ap = h < 12 ? "AM" : "PM";
+    h = h % 12 || 12;
+    const min = String(dt.getUTCMinutes()).padStart(2, "0");
+    return `${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}, ${h}:${min} ${ap}`;
+}
+
+function fmtHour(h) {
+    return `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function fmtDuration(ms) {
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `${mins} min`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 48) return `${hrs}h ${mins % 60}m`;
+    return `${Math.floor(hrs / 24)} days`;
+}
+
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
 
 
 // ============================================================
@@ -80,636 +118,254 @@ function parseCSV(text) {
 // ============================================================
 
 async function loadData() {
-
     try {
+        const response = await fetch(sheetURL + "&cache=" + Date.now());
+        if (!response.ok) throw new Error("HTTP " + response.status);
 
-        const response = await fetch(
-            sheetURL + "&cache=" + Date.now()
-        );
+        const data = parseCSV(await response.text());
+        data.shift(); // header row
 
-        const csvText = await response.text();
+        rows = data
+            .map(r => ({
+                cali: parseTimestamp(r[0]),
+                local: parseTimestamp(r[1]),
+                occupied: (r[3] || "").trim().toLowerCase() === "occupied",
+                temp: parseFloat(r[5]),               // NaN if blank
+                weather: (r[6] || "").trim()
+            }))
+            .filter(r => r.local !== null)
+            .sort((a, b) => a.local - b.local);       // newest = last, always
 
-        const data = parseCSV(csvText);
-
-        // Remove header row
-        data.shift();
-
-        // Make sure data exists
-        if (data.length === 0) {
-            console.error("No spreadsheet data found.");
+        if (rows.length === 0) {
+            console.error("No usable spreadsheet data found.");
+            setText("owl-count", "No data");
             return;
         }
 
-        // Newest row
-        const latest = data[data.length - 1];
-
-
-        /*
-        ========================================================
-        GOOGLE SHEET COLUMNS (confirmed from actual sheet)
-        ========================================================
-
-        0 = Timestamp (raw, e.g. 8/16/2026 20:46:17) → IGNORE
-        1 = Time (formatted, e.g. 08-17-2026 04:46 AM) → USE
-        2 = Baby Owl Number                            → IGNORE
-        3 = Occupancy status ("Occupied"/etc.)         → USE
-        4 = Confidence                                 → IGNORE
-        5 = Temperature                                → USE
-        6 = Weather                                    → USE
-
-        Note: the sheet's header labels column 3 as
-        "Adult Owl Number" but the actual values in that
-        column are occupancy strings like "Occupied", so
-        we read it as occupancy, same as before.
-
-        ========================================================
-        */
-
-
-        // ----------------------------------------------------
-        // Get latest values
-        // ----------------------------------------------------
-
-        const occupancy =
-            (latest[3] || "").trim();
-
-        const temperature =
-            (latest[5] || "").trim();
-
-        const weather =
-            (latest[6] || "").trim();
-
-
-        // ----------------------------------------------------
-        // Determine occupancy
-        // ----------------------------------------------------
-
-        const isOccupied =
-            occupancy.toLowerCase() === "occupied";
-
-
-        // ====================================================
-        // UPDATE OCCUPANCY
-        // ====================================================
-
-        const owlCountElement =
-            document.getElementById("owl-count");
-
-        if (owlCountElement) {
-
-            owlCountElement.textContent =
-                isOccupied ? "Occupied 🦉" : "Unoccupied";
-        }
-
-
-        // ====================================================
-        // UPDATE SECONDARY OCCUPANCY DISPLAY
-        // ====================================================
-
-        const occupancyElement =
-            document.getElementById("adult-owl-count");
-
-        if (occupancyElement) {
-
-            occupancyElement.textContent =
-                isOccupied ? "Occupied" : "Unoccupied";
-        }
-
-
-        // ====================================================
-        // UPDATE TEMPERATURE
-        // ====================================================
-
-        const temperatureElement =
-            document.getElementById("temperature");
-
-        if (temperatureElement) {
-
-            temperatureElement.textContent =
-                temperature !== "" ? temperature + "°F" : "N/A";
-        }
-
-
-        // ====================================================
-        // UPDATE WEATHER
-        // ====================================================
-
-        const weatherElement =
-            document.getElementById("weather");
-
-        if (weatherElement) {
-
-            weatherElement.textContent =
-                weather !== "" ? weather : "N/A";
-        }
-
-
-        // ====================================================
-        // UPDATE TIMESTAMP
-        // ====================================================
-
-        const updatedElement =
-            document.getElementById("updated");
-
-        if (updatedElement) {
-
-            updatedElement.textContent =
-                latest[1];
-        }
-
-
-        // ====================================================
-        // RAIN + OCCUPANCY STATUS
-        // ====================================================
-
-        const isRaining =
-            weather.toLowerCase().includes("rain");
-
-        const rainStatusElement =
-            document.getElementById("rain-status");
-
-
-        if (rainStatusElement) {
-
-            if (isRaining && isOccupied) {
-
-                rainStatusElement.textContent =
-                    "☔ Raining — Owl in box";
-
-            } else if (isRaining && !isOccupied) {
-
-                rainStatusElement.textContent =
-                    "☔ Raining — Box unoccupied";
-
-            } else if (!isRaining && isOccupied) {
-
-                rainStatusElement.textContent =
-                    "☀️ Not raining — Owl in box";
-
-            } else {
-
-                rainStatusElement.textContent =
-                    "☀️ Not raining — Box unoccupied";
-            }
-        }
-
-
-        // ====================================================
-        // CREATE CHARTS
-        // ====================================================
-
-        createCharts(data);
-
+        updateCurrent();
+        renderOccupancyChart();
+        renderTempChart();
 
     } catch (error) {
-
-        console.error(
-            "Error loading spreadsheet:",
-            error
-        );
-
-        const owlCountElement =
-            document.getElementById("owl-count");
-
-        if (owlCountElement) {
-
-            owlCountElement.textContent =
-                "Error";
-        }
+        console.error("Error loading spreadsheet:", error);
+        setText("owl-count", "Error");
     }
 }
 
 
-
 // ============================================================
-// PARSE GOOGLE SHEETS TIMESTAMP
-// ============================================================
-// Handles both M/D/YYYY and MM-DD-YYYY, with optional
-// leading zeros, followed by H:MM and an optional AM/PM.
+// CURRENT STATUS CARDS
 // ============================================================
 
-function parseSheetTimestamp(str) {
+function updateCurrent() {
+    const latest = rows[rows.length - 1];
 
-    if (!str) {
-        return new Date(NaN);
-    }
+    // Nest box status
+    setText("owl-count", latest.occupied ? "Occupied 🦉" : "Unoccupied");
 
-    const trimmed =
-        str.trim();
-
-
-    const match =
-        trimmed.match(
-            /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i
-        );
-
-
-    if (!match) {
-
-        return new Date(NaN);
-    }
-
-
-    const [
-        ,
-        month,
-        day,
-        year,
-        rawHours,
-        minutes,
-        meridiem
-    ] = match;
-
-
-    let hours =
-        Number(rawHours);
-
-
-    // Convert AM / PM
-    if (meridiem) {
-
-        const isPM =
-            meridiem.toUpperCase() === "PM";
-
-
-        if (isPM && hours !== 12) {
-            hours += 12;
+    // Owl activity: when was an owl last seen?
+    let activity;
+    if (latest.occupied) {
+        activity = "In the box now";
+    } else {
+        let lastOcc = null;
+        for (let i = rows.length - 1; i >= 0; i--) {
+            if (rows[i].occupied) { lastOcc = rows[i]; break; }
         }
-
-
-        if (!isPM && hours === 12) {
-            hours = 0;
-        }
+        activity = lastOcc
+            ? `Last seen ${fmtDuration(latest.local - lastOcc.local)} before the latest reading`
+            : "No owl seen yet";
     }
+    setText("adult-owl-count", activity);
 
+    // Last updated, both timezones
+    setText("updated-local", `${LOCAL_LABEL}: ${fmtTime(latest.local)}`);
+    setText("updated-cali", `${CALI_LABEL}: ${fmtTime(latest.cali)}`);
 
-    return new Date(
+    // Temperature (skip blanks)
+    setText("temperature", Number.isFinite(latest.temp) ? latest.temp + TEMP_UNIT : "N/A");
 
-        Number(year),
+    // Weather
+    setText("weather", latest.weather || "N/A");
 
-        Number(month) - 1,
-
-        Number(day),
-
-        hours,
-
-        Number(minutes)
-    );
+    // Rain + occupancy
+    const raining = latest.weather.toLowerCase().includes("rain");
+    const box = latest.occupied ? "Owl in box" : "Box unoccupied";
+    setText("rain-status", `${raining ? "☔ Raining" : "☀️ Not raining"} — ${box}`);
 }
 
 
-
 // ============================================================
-// CREATE CHARTS
+// OCCUPANCY CHART
+// ============================================================
+// Raw counts per hour are misleading (an hour with more
+// readings always looks "busier"). Instead we plot the
+// PERCENTAGE of readings in each hour that showed an owl.
 // ============================================================
 
-function createCharts(data) {
+function renderOccupancyChart() {
+    const total = new Array(24).fill(0);
+    const occ = new Array(24).fill(0);
 
-
-    // ========================================================
-    // OCCUPANCY BY HOUR
-    // ========================================================
-
-    const occupiedByHour =
-        new Array(24).fill(0);
-
-
-    // ========================================================
-    // TEMPERATURE DATA
-    // ========================================================
-
-    const temperatureTimes = [];
-
-    const temperatures = [];
-
-
-    // ========================================================
-    // PROCESS DATA
-    // ========================================================
-
-    data.forEach(row => {
-
-
-        // ----------------------------------------------------
-        // Timestamp
-        // ----------------------------------------------------
-
-        const timestamp =
-            parseSheetTimestamp(row[1]);
-
-
-        // ----------------------------------------------------
-        // Occupancy
-        // ----------------------------------------------------
-
-        const occupancy =
-            (row[3] || "").trim();
-
-
-        // ----------------------------------------------------
-        // Temperature
-        // ----------------------------------------------------
-
-        const temperature =
-            Number(row[5]);
-
-
-        // ====================================================
-        // TEMPERATURE GRAPH
-        // ====================================================
-
-        if (!isNaN(temperature)) {
-
-            temperatureTimes.push(
-                row[1]
-            );
-
-            temperatures.push(
-                temperature
-            );
-        }
-
-
-        // ====================================================
-        // OCCUPANCY GRAPH
-        // ====================================================
-
-        if (
-            !isNaN(timestamp.getTime()) &&
-            occupancy.toLowerCase() === "occupied"
-        ) {
-
-            occupiedByHour[
-                timestamp.getHours()
-            ]++;
-        }
-
+    rows.forEach(r => {
+        const t = r[occupancyZone === "local" ? "local" : "cali"];
+        if (t == null) return;
+        const h = new Date(t).getUTCHours();
+        total[h]++;
+        if (r.occupied) occ[h]++;
     });
 
+    occupancyMeta = { occ, total };
 
-    // ========================================================
-    // TIME LABELS
-    // ========================================================
+    const pct = total.map((n, i) => (n ? Math.round((occ[i] / n) * 1000) / 10 : null));
+    const zoneName = occupancyZone === "local" ? LOCAL_LABEL : CALI_LABEL;
+    const labels = Array.from({ length: 24 }, (_, h) => fmtHour(h));
 
-    const labels = [];
+    if (!owlChart) {
+        const el = document.getElementById("owlChart");
+        if (!el) return;
 
-
-    for (let h = 0; h < 24; h++) {
-
-        const period =
-            h < 12 ? "AM" : "PM";
-
-
-        const hour12 =
-            h % 12 === 0
-                ? 12
-                : h % 12;
-
-
-        labels.push(
-            `${hour12} ${period}`
-        );
-    }
-
-
-
-    // ========================================================
-    // DESTROY PREVIOUS CHARTS
-    // ========================================================
-
-    if (owlChart) {
-        owlChart.destroy();
-    }
-
-
-    if (tempChart) {
-        tempChart.destroy();
-    }
-
-
-
-    // ========================================================
-    // OCCUPANCY CHART
-    // ========================================================
-
-    const owlChartElement =
-        document.getElementById("owlChart");
-
-
-    if (owlChartElement) {
-
-        owlChart =
-            new Chart(
-                owlChartElement,
-                {
-
-                    type: "bar",
-
-                    data: {
-
-                        labels: labels,
-
-                        datasets: [
-
-                            {
-
-                                label:
-                                    "Occupied Readings",
-
-                                data:
-                                    occupiedByHour,
-
-                                backgroundColor:
-                                    "rgba(220, 38, 38, 0.7)",
-
-                                borderColor:
-                                    "rgba(220, 38, 38, 1)",
-
-                                borderWidth: 1,
-
-                                borderRadius: 6
+        owlChart = new Chart(el, {
+            type: "bar",
+            data: {
+                labels,
+                datasets: [{
+                    label: "% of readings occupied",
+                    data: pct,
+                    backgroundColor: "rgba(220, 38, 38, 0.7)",
+                    borderColor: "rgba(220, 38, 38, 1)",
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: "" },
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const i = ctx.dataIndex;
+                                return `${ctx.parsed.y}% occupied (${occupancyMeta.occ[i]} of ${occupancyMeta.total[i]} readings)`;
                             }
-
-                        ]
-                    },
-
-
-                    options: {
-
-                        responsive: true,
-
-
-                        plugins: {
-
-                            title: {
-
-                                display: true,
-
-                                text:
-                                    "Owl Box Occupancy by Hour"
-                            }
-
-                        },
-
-
-                        scales: {
-
-                            y: {
-
-                                beginAtZero: true,
-
-                                ticks: {
-
-                                    precision: 0
-                                },
-
-                                title: {
-
-                                    display: true,
-
-                                    text:
-                                        "Occupied Readings"
-                                }
-                            },
-
-
-                            x: {
-
-                                title: {
-
-                                    display: true,
-
-                                    text:
-                                        "Hour of Day"
-                                }
-                            }
-
                         }
-
                     }
-
-                }
-            );
-    }
-
-
-
-    // ========================================================
-    // TEMPERATURE CHART
-    // ========================================================
-
-    const tempChartElement =
-        document.getElementById("tempChart");
-
-
-    if (tempChartElement) {
-
-        tempChart =
-            new Chart(
-                tempChartElement,
-                {
-
-                    type: "line",
-
-                    data: {
-
-                        labels:
-                            temperatureTimes,
-
-                        datasets: [
-
-                            {
-
-                                label:
-                                    "Temperature (°F)",
-
-                                data:
-                                    temperatures,
-
-                                tension: 0.3
-                            }
-
-                        ]
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: { callback: v => v + "%" },
+                        title: { display: true, text: "Readings with owl present" }
                     },
-
-
-                    options: {
-
-                        responsive: true
-
-                    }
-
+                    x: { title: { display: true, text: "" } }
                 }
-            );
+            }
+        });
+    } else {
+        owlChart.data.datasets[0].data = pct;
     }
 
+    owlChart.options.plugins.title.text = `Owl Box Occupancy by Hour (${zoneName} time)`;
+    owlChart.options.scales.x.title.text = `Hour of day, ${zoneName} time`;
+    owlChart.update();
+
+    // Toggle button highlight
+    document.querySelectorAll("[data-zone]").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.zone === occupancyZone);
+    });
 }
 
 
-
 // ============================================================
-// SHARE BUTTON
+// TEMPERATURE CHART (last N days, true time spacing)
 // ============================================================
 
-const shareBtn =
-    document.getElementById(
-        "nativeShareBtn"
-    );
+function renderTempChart() {
+    const newest = rows[rows.length - 1].local;
+    const cutoff = newest - TEMP_DAYS * 24 * 60 * 60 * 1000;
 
+    const points = rows
+        .filter(r => r.local >= cutoff && Number.isFinite(r.temp))
+        .map(r => ({ x: r.local, y: r.temp }));
 
-// Hide share button if unsupported
-if (
-    shareBtn &&
-    !navigator.share
-) {
+    if (!tempChart) {
+        const el = document.getElementById("tempChart");
+        if (!el) return;
 
-    shareBtn.style.display =
-        "none";
+        tempChart = new Chart(el, {
+            type: "line",
+            data: {
+                datasets: [{
+                    label: `Temperature (${TEMP_UNIT})`,
+                    data: points,
+                    borderColor: "rgba(37, 99, 235, 1)",
+                    backgroundColor: "rgba(37, 99, 235, 0.15)",
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `Temperature, last ${TEMP_DAYS} days (${LOCAL_LABEL} time)`
+                    },
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: items => fmtTime(items[0].parsed.x),
+                            label: ctx => `${ctx.parsed.y}${TEMP_UNIT}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: "linear",
+                        ticks: { maxTicksLimit: 8, callback: v => fmtTime(v) }
+                    },
+                    y: { title: { display: true, text: `Temperature (${TEMP_UNIT})` } }
+                }
+            }
+        });
+    } else {
+        tempChart.data.datasets[0].data = points;
+        tempChart.update();
+    }
 }
 
 
-// Share website
-shareBtn?.addEventListener(
-    "click",
-    async () => {
+// ============================================================
+// BUTTONS
+// ============================================================
 
-        try {
+document.querySelectorAll("[data-zone]").forEach(btn => {
+    btn.addEventListener("click", () => {
+        occupancyZone = btn.dataset.zone;
+        if (rows.length) renderOccupancyChart();
+    });
+});
 
-            await navigator.share({
+const shareBtn = document.getElementById("nativeShareBtn");
 
-                title:
-                    document.title,
+if (shareBtn && !navigator.share) shareBtn.style.display = "none";
 
-                url:
-                    window.location.href
-            });
-
-        } catch (err) {
-
-            console.log(
-                "Share canceled or failed:",
-                err
-            );
-        }
-
+shareBtn?.addEventListener("click", async () => {
+    try {
+        await navigator.share({ title: document.title, url: window.location.href });
+    } catch (err) {
+        console.log("Share canceled or failed:", err);
     }
-);
-
+});
 
 
 // ============================================================
-// INITIAL LOAD
+// INITIAL LOAD + REFRESH EVERY MINUTE
 // ============================================================
 
 loadData();
-
-
-
-// ============================================================
-// REFRESH EVERY MINUTE
-// ============================================================
-
-setInterval(
-    loadData,
-    60000
-);
+setInterval(loadData, 60000);
