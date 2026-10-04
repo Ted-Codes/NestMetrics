@@ -234,3 +234,63 @@ a:visited {
             margin-top: 4px;
         }
 
+/* Dropdown (details / summary) */
+
+details {
+    background: #1c2b27;
+    border-radius: 15px;
+    padding: 0;
+    margin-bottom: 25px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    border: 2px solid #2e4a26;
+    width: 100%;
+    overflow: hidden;
+}
+
+details summary {
+    list-style: none;              /* hides default arrow in most browsers */
+    cursor: pointer;
+    padding: 20px 25px;
+    font-size: 18px;
+    font-weight: bold;
+    color: #b8e986;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+details summary::-webkit-details-marker {
+    display: none;                 /* hides default arrow in Safari/Chrome */
+}
+
+/* Custom arrow */
+details summary::after {
+    content: "▾";
+    font-size: 22px;
+    transition: transform 0.2s ease;
+}
+
+details[open] summary::after {
+    transform: rotate(180deg);
+}
+
+details summary:hover {
+    background: #6fae53;
+    color: #101820;
+}
+
+/* Expanded content */
+details > :not(summary) {
+    padding: 0 25px;
+}
+
+details p {
+    line-height: 1.6;
+    margin: 0 0 20px;
+}
+
+details[open] summary {
+    border-bottom: 1px solid #2e4a26;
+    margin-bottom: 20px;
+}
