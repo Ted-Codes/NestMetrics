@@ -1,371 +1,415 @@
-// ============================================================
-// NESTMETRICS - OWL BOX ANALYTICS
-// ============================================================
+// ==========================
+// NestMetrics - peaks.js (Stream 2, Derbyshire UK)
+// ==========================
 
-// ---------- CONFIG (change these per stream page) ----------
-const sheetURL =
+const DEFAULT_SHEET_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr18vuowtUDnqE_Sn2b9d_7lvAmGSvnPYaixiMnlhtWXSndXgcKQPn6NDmAtKmVkRf0_rw6Jr3ctIS/pub?output=csv";
+const sheetURL = document.body.dataset.sheet || DEFAULT_SHEET_URL;
 
-const LOCAL_LABEL = "UK";          // timezone of the owl box (sheet column 2)
-const CALI_LABEL  = "California";  // sheet column 1
-const TEMP_DAYS   = 3;             // temperature graph window
-const TEMP_UNIT   = "°F";
+// ---------- CONFIG ----------
+const LOCAL_LABEL = "UK";
+const CALI_LABEL = "California";
+const TEMP_UNIT = "°F";
+
+// How often a reading is logged. If your sheet logs more/less often, change this.
+const READING_INTERVAL_MS = 30 * 60 * 1000;
+// Readings further apart than 3 intervals are shown as a gap, not a fake "empty"
+const GAP_MS = READING_INTERVAL_MS * 3;
+const REFRESH_MS = 5 * 60 * 1000;
+
+const RANGES = {
+    "24h": 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000
+};
+const TEMP_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 /*
- GOOGLE SHEET COLUMNS
- 0 = Timestamp, California time (e.g. 8/16/2026 20:46:17)
- 1 = Time, local time at the box  (e.g. 08-17-2026 04:46 AM)
- 2 = Baby Owl Number  (ignored)
- 3 = Occupancy ("Occupied" / anything else = unoccupied)
- 4 = Confidence       (ignored)
- 5 = Temperature
- 6 = Weather
+Sheet columns:
+0 = Timestamp (form submit time = California time, "M/D/YYYY H:MM:SS")
+1 = Time (capture time = UK time, "MM-DD-YYYY H:MM AM/PM")
+2 = Baby Owl Number (ignored)
+3 = Occupancy ("Occupied" or anything else = empty)
+4 = Confidence (percent)
+5 = Temperature
+6 = Weather
 */
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+let owlChart;
+let tempChart;
+let allRecords = [];
+let currentRange = "24h";
 
-let owlChart, tempChart;
-let rows = [];            // cleaned, sorted rows
-let occupancyZone = "local";
-let occupancyMeta = { occ: [], total: [] };
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
 
-
-// ============================================================
-// CSV PARSER (handles quotes, commas and newlines in fields)
-// ============================================================
-
+// CSV parser (quotes, commas in quotes, newlines in quoted headers, \r\n)
 function parseCSV(text) {
-    const out = [];
-    let row = [], field = "", inQuotes = false;
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
 
     for (let i = 0; i < text.length; i++) {
-        const c = text[i], next = text[i + 1];
+        const c = text[i];
 
         if (inQuotes) {
-            if (c === '"' && next === '"') { field += '"'; i++; }
+            if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
             else if (c === '"') inQuotes = false;
             else field += c;
-        } else if (c === '"') inQuotes = true;
-        else if (c === ",") { row.push(field); field = ""; }
-        else if (c === "\r") { /* ignore */ }
-        else if (c === "\n") { row.push(field); field = ""; out.push(row); row = []; }
-        else field += c;
+        } else if (c === '"') {
+            inQuotes = true;
+        } else if (c === ",") {
+            row.push(field);
+            field = "";
+        } else if (c === "\n" || c === "\r") {
+            if (c === "\r" && text[i + 1] === "\n") i++;
+            row.push(field);
+            field = "";
+            if (row.some(cell => cell.trim() !== "")) rows.push(row);
+            row = [];
+        } else {
+            field += c;
+        }
     }
 
-    if (field.length > 0 || row.length > 0) { row.push(field); out.push(row); }
-    return out.filter(r => r.some(cell => cell.trim() !== ""));
+    row.push(field);
+    if (row.some(cell => cell.trim() !== "")) rows.push(row);
+    return rows;
 }
 
+// Handles "MM-DD-YYYY H:MM AM/PM" and "M/D/YYYY H:MM:SS" (Safari-safe)
+function parseSheetTimestamp(str) {
+    if (!str) return new Date(NaN);
 
-// ============================================================
-// TIME HELPERS
-// ============================================================
-// Timestamps are stored as "wall clock" milliseconds (built with
-// Date.UTC) so the viewer's own timezone / DST never shifts them.
-// Accepts M/D/YYYY or MM-DD-YYYY, 24h or AM/PM, optional seconds.
-// ============================================================
-
-function parseTimestamp(str) {
-    if (!str) return null;
-
-    const m = str.trim().match(
-        /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})[\sT,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i
+    const match = str.trim().match(
+        /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i
     );
-    if (!m) return null;
+    if (!match) return new Date(NaN);
 
-    const [, mo, d, y, rawH, mi, s, ap] = m;
-    let h = Number(rawH);
+    const [, month, day, year, rawHours, minutes, meridiem] = match;
+    let hours = Number(rawHours);
 
-    if (ap) {
-        const pm = ap.toUpperCase() === "PM";
-        if (pm && h !== 12) h += 12;
-        if (!pm && h === 12) h = 0;
+    if (meridiem) {
+        const isPM = meridiem.toUpperCase() === "PM";
+        if (isPM && hours !== 12) hours += 12;
+        if (!isPM && hours === 12) hours = 0;
     }
 
-    return Date.UTC(Number(y), Number(mo) - 1, Number(d), h, Number(mi), Number(s || 0));
+    return new Date(Number(year), Number(month) - 1, Number(day), hours, Number(minutes), 0);
 }
 
-function fmtTime(ms) {
-    if (ms == null) return "N/A";
-    const dt = new Date(ms);
-    let h = dt.getUTCHours();
-    const ap = h < 12 ? "AM" : "PM";
-    h = h % 12 || 12;
-    const min = String(dt.getUTCMinutes()).padStart(2, "0");
-    return `${MONTHS[dt.getUTCMonth()]} ${dt.getUTCDate()}, ${h}:${min} ${ap}`;
+function formatTime(date) {
+    if (!date || isNaN(date.getTime())) return "--";
+    return date.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+    });
 }
 
-function fmtHour(h) {
-    return `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
-}
-
-function fmtDuration(ms) {
+function formatDuration(ms) {
     const mins = Math.round(ms / 60000);
-    if (mins < 60) return `${mins} min`;
+    if (mins < 60) return mins + " min";
     const hrs = Math.floor(mins / 60);
-    if (hrs < 48) return `${hrs}h ${mins % 60}m`;
-    return `${Math.floor(hrs / 24)} days`;
+    if (hrs < 48) return hrs + "h " + (mins % 60) + "m";
+    return Math.floor(hrs / 24) + " days";
 }
 
-function setText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
+// Raw rows -> clean records, oldest -> newest (by UK capture time)
+function toRecords(rows) {
+    return rows
+        .slice(1) // header
+        .filter(r => (r[3] || "").trim() !== "") // skip rows with no occupancy value
+        .map(r => ({
+            submitted: parseSheetTimestamp(r[0]),   // California
+            time: parseSheetTimestamp(r[1]),        // UK
+            occupied: (r[3] || "").trim().toLowerCase() === "occupied",
+            confidence: parseFloat(r[4]),           // NaN if blank
+            temperature: parseFloat(r[5]),          // NaN if blank
+            weather: (r[6] || "").trim()
+        }))
+        .filter(rec => !isNaN(rec.time.getTime()))
+        .sort((a, b) => a.time - b.time);
 }
-
-
-// ============================================================
-// LOAD DATA
-// ============================================================
 
 async function loadData() {
     try {
         const response = await fetch(sheetURL + "&cache=" + Date.now());
         if (!response.ok) throw new Error("HTTP " + response.status);
 
-        const data = parseCSV(await response.text());
-        data.shift(); // header row
+        allRecords = toRecords(parseCSV(await response.text()));
 
-        rows = data
-            .map(r => ({
-                cali: parseTimestamp(r[0]),
-                local: parseTimestamp(r[1]),
-                occupied: (r[3] || "").trim().toLowerCase() === "occupied",
-                temp: parseFloat(r[5]),               // NaN if blank
-                weather: (r[6] || "").trim()
-            }))
-            .filter(r => r.local !== null)
-            .sort((a, b) => a.local - b.local);       // newest = last, always
-
-        if (rows.length === 0) {
-            console.error("No usable spreadsheet data found.");
+        if (allRecords.length === 0) {
             setText("owl-count", "No data");
             return;
         }
 
-        updateCurrent();
-        renderOccupancyChart();
-        renderTempChart();
-
+        updateCards();
     } catch (error) {
         console.error("Error loading spreadsheet:", error);
         setText("owl-count", "Error");
+        setText("adult-owl-count", "Error");
+        setText("updated-local", "Error");
+        setText("temperature", "Error");
+        setText("weather", "Error");
+        return;
+    }
+
+    // Charts are separate so a chart problem never blanks the cards
+    try {
+        createCharts(allRecords);
+    } catch (error) {
+        console.error("Error drawing charts:", error);
     }
 }
 
+function updateCards() {
+    const latest = allRecords[allRecords.length - 1];
 
-// ============================================================
-// CURRENT STATUS CARDS
-// ============================================================
-
-function updateCurrent() {
-    const latest = rows[rows.length - 1];
-
-    // Nest box status
     setText("owl-count", latest.occupied ? "Occupied 🦉" : "Unoccupied");
 
-    // Owl activity: when was an owl last seen?
-    let activity;
-    if (latest.occupied) {
-        activity = "In the box now";
-    } else {
-        let lastOcc = null;
-        for (let i = rows.length - 1; i >= 0; i--) {
-            if (rows[i].occupied) { lastOcc = rows[i]; break; }
-        }
+    let activity = "In the box now";
+    if (!latest.occupied) {
+        const lastOcc = [...allRecords].reverse().find(r => r.occupied);
         activity = lastOcc
-            ? `Last seen ${fmtDuration(latest.local - lastOcc.local)} before the latest reading`
+            ? "Last seen " + formatDuration(latest.time - lastOcc.time) + " before the latest reading"
             : "No owl seen yet";
     }
     setText("adult-owl-count", activity);
 
-    // Last updated, both timezones
-    setText("updated-local", `${LOCAL_LABEL}: ${fmtTime(latest.local)}`);
-    setText("updated-cali", `${CALI_LABEL}: ${fmtTime(latest.cali)}`);
+    setText("updated-local", LOCAL_LABEL + ": " + formatTime(latest.time));
+    setText("updated-cali", CALI_LABEL + ": " + formatTime(latest.submitted));
 
-    // Temperature (skip blanks)
-    setText("temperature", Number.isFinite(latest.temp) ? latest.temp + TEMP_UNIT : "N/A");
+    setText("temperature", isNaN(latest.temperature) ? "--" : latest.temperature.toFixed(1) + TEMP_UNIT);
+    setText("weather", latest.weather || "--");
 
-    // Weather
-    setText("weather", latest.weather || "N/A");
-
-    // Rain + occupancy
     const raining = latest.weather.toLowerCase().includes("rain");
-    const box = latest.occupied ? "Owl in box" : "Box unoccupied";
-    setText("rain-status", `${raining ? "☔ Raining" : "☀️ Not raining"} — ${box}`);
+    setText(
+        "rain-status",
+        (raining ? "☔ Raining" : "☀️ Not raining") + " — " + (latest.occupied ? "Owl in box" : "Box unoccupied")
+    );
 }
 
-
-// ============================================================
-// OCCUPANCY CHART
-// ============================================================
-// Raw counts per hour are misleading (an hour with more
-// readings always looks "busier"). Instead we plot the
-// PERCENTAGE of readings in each hour that showed an owl.
-// ============================================================
-
-function renderOccupancyChart() {
-    const total = new Array(24).fill(0);
-    const occ = new Array(24).fill(0);
-
-    rows.forEach(r => {
-        const t = r[occupancyZone === "local" ? "local" : "cali"];
-        if (t == null) return;
-        const h = new Date(t).getUTCHours();
-        total[h]++;
-        if (r.occupied) occ[h]++;
+// {x, y} points; inserts a null point wherever data is missing so Chart.js draws a gap
+function buildSeries(records, valueFn) {
+    const points = [];
+    records.forEach((rec, i) => {
+        if (i > 0) {
+            const prev = records[i - 1].time.getTime();
+            const curr = rec.time.getTime();
+            if (curr - prev > GAP_MS) {
+                points.push({ x: Math.round((prev + curr) / 2), y: null });
+            }
+        }
+        points.push({ x: rec.time.getTime(), y: valueFn(rec) });
     });
+    return points;
+}
 
-    occupancyMeta = { occ, total };
+function timeScale(start, end, unit) {
+    return {
+        type: "time",
+        min: start,
+        max: end,
+        time: {
+            unit: unit,
+            tooltipFormat: "MMM d, h:mm a",
+            displayFormats: { hour: "h a", day: "EEE MMM d" }
+        },
+        ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0 },
+        title: { display: true, text: "Time (" + LOCAL_LABEL + ")" }
+    };
+}
 
-    const pct = total.map((n, i) => (n ? Math.round((occ[i] / n) * 1000) / 10 : null));
-    const zoneName = occupancyZone === "local" ? LOCAL_LABEL : CALI_LABEL;
-    const labels = Array.from({ length: 24 }, (_, h) => fmtHour(h));
+function createCharts(records) {
+    if (typeof Chart === "undefined") {
+        console.error("Chart.js did not load");
+        return;
+    }
 
-    if (!owlChart) {
-        const el = document.getElementById("owlChart");
-        if (!el) return;
+    // Windows are anchored to the newest reading, not "now"
+    const end = records[records.length - 1].time.getTime();
+    const start = end - RANGES[currentRange];
+    const inRange = records.filter(r => r.time.getTime() >= start);
+    const showDots = currentRange === "24h";
 
-        owlChart = new Chart(el, {
-            type: "bar",
+    // Summary line
+    const occCount = inRange.filter(r => r.occupied).length;
+    const pct = Math.round((occCount / inRange.length) * 100);
+    setText(
+        "chart-summary",
+        "Readings: " + inRange.length + "  ·  Owl present in " + pct + "% of readings (" + occCount + " of " + inRange.length + ")"
+    );
+
+    if (owlChart) owlChart.destroy();
+    if (tempChart) tempChart.destroy();
+
+    // ==========================
+    // Occupancy over time (step chart: Empty = 0, Occupied = 1)
+    // ==========================
+    const owlCanvas = document.getElementById("owlChart");
+    if (owlCanvas) {
+        owlChart = new Chart(owlCanvas, {
+            type: "line",
             data: {
-                labels,
-                datasets: [{
-                    label: "% of readings occupied",
-                    data: pct,
-                    backgroundColor: "rgba(220, 38, 38, 0.7)",
-                    borderColor: "rgba(220, 38, 38, 1)",
-                    borderWidth: 1,
-                    borderRadius: 6
-                }]
+                datasets: [
+                    {
+                        label: "Occupancy",
+                        data: buildSeries(inRange, r => (r.occupied ? 1 : 0)),
+                        yAxisID: "y",
+                        stepped: "middle",
+                        borderColor: "#dc2626",
+                        backgroundColor: "rgba(220, 38, 38, 0.15)",
+                        borderWidth: 2,
+                        fill: true,
+                        pointRadius: showDots ? 3 : 0,
+                        pointHoverRadius: 5,
+                        spanGaps: false
+                    },
+                    {
+                        // Click "Confidence" in the legend to show/hide
+                        label: "Confidence (%)",
+                        data: buildSeries(inRange, r => (isNaN(r.confidence) ? null : r.confidence)),
+                        yAxisID: "y2",
+                        hidden: true,
+                        borderColor: "rgba(230, 126, 34, 0.85)",
+                        borderDash: [5, 4],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        spanGaps: false
+                    }
+                ]
             },
             options: {
                 responsive: true,
+                interaction: { mode: "nearest", axis: "x", intersect: false },
                 plugins: {
-                    title: { display: true, text: "" },
-                    legend: { display: false },
+                    title: {
+                        display: true,
+                        text: currentRange === "24h"
+                            ? "Owl Box Occupancy - Last 24 Hours"
+                            : "Owl Box Occupancy - Last 7 Days"
+                    },
                     tooltip: {
                         callbacks: {
                             label: ctx => {
-                                const i = ctx.dataIndex;
-                                return `${ctx.parsed.y}% occupied (${occupancyMeta.occ[i]} of ${occupancyMeta.total[i]} readings)`;
+                                if (ctx.parsed.y === null) return "";
+                                return ctx.dataset.yAxisID === "y2"
+                                    ? "Confidence: " + ctx.parsed.y + "%"
+                                    : (ctx.parsed.y === 1 ? "Occupied" : "Empty");
                             }
                         }
                     }
                 },
                 scales: {
+                    x: timeScale(start, end, currentRange === "24h" ? "hour" : "day"),
                     y: {
-                        beginAtZero: true,
-                        max: 100,
-                        ticks: { callback: v => v + "%" },
-                        title: { display: true, text: "Readings with owl present" }
+                        min: 0,
+                        max: 1,
+                        ticks: {
+                            stepSize: 1,
+                            callback: v => (v === 1 ? "Occupied" : v === 0 ? "Empty" : "")
+                        },
+                        title: { display: true, text: "Box status" }
                     },
-                    x: { title: { display: true, text: "" } }
+                    y2: {
+                        display: "auto",
+                        position: "right",
+                        min: 0,
+                        max: 100,
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: "Confidence (%)" }
+                    }
                 }
             }
         });
-    } else {
-        owlChart.data.datasets[0].data = pct;
     }
 
-    owlChart.options.plugins.title.text = `Owl Box Occupancy by Hour (${zoneName} time)`;
-    owlChart.options.scales.x.title.text = `Hour of day, ${zoneName} time`;
-    owlChart.update();
-
-    // Toggle button highlight
-    document.querySelectorAll("[data-zone]").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.zone === occupancyZone);
-    });
-}
-
-
-// ============================================================
-// TEMPERATURE CHART (last N days, true time spacing)
-// ============================================================
-
-function renderTempChart() {
-    const newest = rows[rows.length - 1].local;
-    const cutoff = newest - TEMP_DAYS * 24 * 60 * 60 * 1000;
-
-    const points = rows
-        .filter(r => r.local >= cutoff && Number.isFinite(r.temp))
-        .map(r => ({ x: r.local, y: r.temp }));
-
-    if (!tempChart) {
-        const el = document.getElementById("tempChart");
-        if (!el) return;
-
-        tempChart = new Chart(el, {
+    // ==========================
+    // Temperature (always the last 3 days)
+    // ==========================
+    const tempStart = end - TEMP_WINDOW_MS;
+    const tempInRange = records.filter(r => r.time.getTime() >= tempStart);
+    const tempCanvas = document.getElementById("tempChart");
+    if (tempCanvas) {
+        tempChart = new Chart(tempCanvas, {
             type: "line",
             data: {
                 datasets: [{
-                    label: `Temperature (${TEMP_UNIT})`,
-                    data: points,
-                    borderColor: "rgba(37, 99, 235, 1)",
-                    backgroundColor: "rgba(37, 99, 235, 0.15)",
-                    pointRadius: 0,
-                    pointHoverRadius: 4,
+                    label: "Temperature (" + TEMP_UNIT + ")",
+                    data: buildSeries(tempInRange, r => (isNaN(r.temperature) ? null : r.temperature)),
+                    borderColor: "#e4572e",
+                    backgroundColor: "rgba(228, 87, 46, 0.12)",
                     tension: 0.3,
-                    fill: true
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    spanGaps: false
                 }]
             },
             options: {
                 responsive: true,
+                interaction: { mode: "nearest", axis: "x", intersect: false },
                 plugins: {
-                    title: {
-                        display: true,
-                        text: `Temperature, last ${TEMP_DAYS} days (${LOCAL_LABEL} time)`
-                    },
-                    legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            title: items => fmtTime(items[0].parsed.x),
-                            label: ctx => `${ctx.parsed.y}${TEMP_UNIT}`
+                            label: ctx => (ctx.parsed.y === null ? "" : ctx.parsed.y.toFixed(1) + TEMP_UNIT)
                         }
                     }
                 },
                 scales: {
-                    x: {
-                        type: "linear",
-                        ticks: { maxTicksLimit: 8, callback: v => fmtTime(v) }
-                    },
-                    y: { title: { display: true, text: `Temperature (${TEMP_UNIT})` } }
+                    x: timeScale(tempStart, end, "day"),
+                    y: { title: { display: true, text: TEMP_UNIT } }
                 }
             }
         });
-    } else {
-        tempChart.data.datasets[0].data = points;
-        tempChart.update();
     }
 }
 
-
-// ============================================================
-// BUTTONS
-// ============================================================
-
-document.querySelectorAll("[data-zone]").forEach(btn => {
+// ==========================
+// Range toggle (24 hours / 7 days)
+// ==========================
+document.querySelectorAll(".range-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-        occupancyZone = btn.dataset.zone;
-        if (rows.length) renderOccupancyChart();
+        currentRange = btn.dataset.range;
+
+        document.querySelectorAll(".range-btn").forEach(b => {
+            b.classList.toggle("active", b === btn);
+        });
+
+        if (allRecords.length > 0) {
+            try {
+                createCharts(allRecords);
+            } catch (error) {
+                console.error("Error drawing charts:", error);
+            }
+        }
     });
 });
 
+// ==========================
+// Share button
+// ==========================
 const shareBtn = document.getElementById("nativeShareBtn");
 
-if (shareBtn && !navigator.share) shareBtn.style.display = "none";
+if (shareBtn && !navigator.share) {
+    shareBtn.style.display = "none";
+}
 
-shareBtn?.addEventListener("click", async () => {
-    try {
-        await navigator.share({ title: document.title, url: window.location.href });
-    } catch (err) {
-        console.log("Share canceled or failed:", err);
-    }
-});
+if (shareBtn) {
+    shareBtn.addEventListener("click", async () => {
+        try {
+            await navigator.share({ title: document.title, url: window.location.href });
+        } catch (err) {
+            console.log("Share canceled or failed:", err);
+        }
+    });
+}
 
-
-// ============================================================
-// INITIAL LOAD + REFRESH EVERY MINUTE
-// ============================================================
-
+// Initial load + refresh
 loadData();
-setInterval(loadData, 60000);
+setInterval(loadData, REFRESH_MS);
