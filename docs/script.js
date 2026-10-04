@@ -1,47 +1,50 @@
 // ==========================
-// NestMetrics - script.js
+// NestMetrics - peaks.js (Stream 2, Derbyshire UK)
 // ==========================
 
-// Google Sheet CSV link (a page can override this with <body data-sheet="...">)
-const DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSIDCT6OHYQGa_YHxcmMhp1IZuUfJzBqbV5n1MlZqvBzfM4zWyvd4jyo5Gi2vPgoGeCVXbmRwOU0jnx/pub?output=csv";
+const DEFAULT_SHEET_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSr18vuowtUDnqE_Sn2b9d_7lvAmGSvnPYaixiMnlhtWXSndXgcKQPn6NDmAtKmVkRf0_rw6Jr3ctIS/pub?output=csv";
 const sheetURL = document.body.dataset.sheet || DEFAULT_SHEET_URL;
 
-/*
-Sheet columns:
-0 = Timestamp      (form submit time = California time, "M/D/YYYY H:MM:SS")
-1 = Time           (capture time = Orange, AUS time, "MM-DD-YYYY H:MM AM/PM")
-2 = Falcon_Count
-3 = Confidence     (percent)
-4 = Temperature    (°F)
-5 = Weather
-*/
+// ---------- CONFIG ----------
+const LOCAL_LABEL = "UK";
+const CALI_LABEL = "California";
+const TEMP_UNIT = "°F";
 
-// Data is collected every 30 minutes, so there's no point refreshing every minute
-const REFRESH_MS = 5 * 60 * 1000;
+// How often a reading is logged. If your sheet logs more/less often, change this.
 const READING_INTERVAL_MS = 30 * 60 * 1000;
-// If two readings are more than 3 intervals apart, break the line (shows a gap, not a fake 0)
+// Readings further apart than 3 intervals are shown as a gap, not a fake "empty"
 const GAP_MS = READING_INTERVAL_MS * 3;
+const REFRESH_MS = 5 * 60 * 1000;
 
 const RANGES = {
     "24h": 24 * 60 * 60 * 1000,
     "7d": 7 * 24 * 60 * 60 * 1000
 };
-
-// Temperature history always shows the last 3 days (independent of the falcon chart toggle)
 const TEMP_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+/*
+Sheet columns:
+0 = Timestamp (form submit time = California time, "M/D/YYYY H:MM:SS")
+1 = Time (capture time = UK time, "MM-DD-YYYY H:MM AM/PM")
+2 = Baby Owl Number (ignored)
+3 = Occupancy ("Occupied" or anything else = empty)
+4 = Confidence (percent)
+5 = Temperature
+6 = Weather
+*/
 
 let owlChart;
 let tempChart;
 let allRecords = [];
 let currentRange = "24h";
 
-// Small helper: set text on an element if it exists
 function setText(id, text) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
 }
 
-// Proper CSV parser (handles quoted fields, commas inside quotes, \r\n line endings)
+// CSV parser (quotes, commas in quotes, newlines in quoted headers, \r\n)
 function parseCSV(text) {
     const rows = [];
     let row = [];
@@ -52,14 +55,9 @@ function parseCSV(text) {
         const c = text[i];
 
         if (inQuotes) {
-            if (c === '"' && text[i + 1] === '"') {
-                field += '"';
-                i++;
-            } else if (c === '"') {
-                inQuotes = false;
-            } else {
-                field += c;
-            }
+            if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+            else if (c === '"') inQuotes = false;
+            else field += c;
         } else if (c === '"') {
             inQuotes = true;
         } else if (c === ",") {
@@ -76,15 +74,12 @@ function parseCSV(text) {
         }
     }
 
-    // Last row without trailing newline
     row.push(field);
     if (row.some(cell => cell.trim() !== "")) rows.push(row);
-
     return rows;
 }
 
-// Parses "MM-DD-YYYY H:MM AM/PM" and "M/D/YYYY H:MM:SS" style timestamps
-// manually, because Safari's Date() parsing is much stricter than Chrome's
+// Handles "MM-DD-YYYY H:MM AM/PM" and "M/D/YYYY H:MM:SS" (Safari-safe)
 function parseSheetTimestamp(str) {
     if (!str) return new Date(NaN);
 
@@ -99,15 +94,14 @@ function parseSheetTimestamp(str) {
     if (meridiem) {
         const isPM = meridiem.toUpperCase() === "PM";
         if (isPM && hours !== 12) hours += 12;
-        if (!isPM && hours === 12) hours = 0; // 12 AM = midnight
+        if (!isPM && hours === 12) hours = 0;
     }
 
     return new Date(Number(year), Number(month) - 1, Number(day), hours, Number(minutes), 0);
 }
 
-// Friendly display, e.g. "Oct 2, 2026, 12:29 PM"
-function formatTime(date, fallback) {
-    if (!date || isNaN(date.getTime())) return fallback || "--";
+function formatTime(date) {
+    if (!date || isNaN(date.getTime())) return "--";
     return date.toLocaleString("en-US", {
         month: "short",
         day: "numeric",
@@ -117,62 +111,55 @@ function formatTime(date, fallback) {
     });
 }
 
-// Turn raw CSV rows into clean records, sorted oldest -> newest (by Orange capture time)
+function formatDuration(ms) {
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return mins + " min";
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 48) return hrs + "h " + (mins % 60) + "m";
+    return Math.floor(hrs / 24) + " days";
+}
+
+// Raw rows -> clean records, oldest -> newest (by UK capture time)
 function toRecords(rows) {
     return rows
-        .slice(1) // drop header
+        .slice(1) // header
+        .filter(r => (r[3] || "").trim() !== "") // skip rows with no occupancy value
         .map(r => ({
-            submitted: parseSheetTimestamp(r[0]), // California time
-            label: (r[1] || "").trim(),
-            time: parseSheetTimestamp(r[1]),      // Orange time
-            count: Number(r[2]),
-            confidence: Number(r[3]),
-            temperature: Number(r[4]),
-            weather: (r[5] || "").trim()
+            submitted: parseSheetTimestamp(r[0]),   // California
+            time: parseSheetTimestamp(r[1]),        // UK
+            occupied: (r[3] || "").trim().toLowerCase() === "occupied",
+            confidence: parseFloat(r[4]),           // NaN if blank
+            temperature: parseFloat(r[5]),          // NaN if blank
+            weather: (r[6] || "").trim()
         }))
-        .filter(rec => !isNaN(rec.time.getTime()) && !isNaN(rec.count))
+        .filter(rec => !isNaN(rec.time.getTime()))
         .sort((a, b) => a.time - b.time);
 }
 
-// Load data from Google Sheets
 async function loadData() {
     try {
         const response = await fetch(sheetURL + "&cache=" + Date.now());
         if (!response.ok) throw new Error("HTTP " + response.status);
 
-        const csvText = await response.text();
-        allRecords = toRecords(parseCSV(csvText));
+        allRecords = toRecords(parseCSV(await response.text()));
 
         if (allRecords.length === 0) {
             setText("owl-count", "No data");
-            setText("adult-owl-count", "--");
-            setText("updated", "--");
-            setText("updated-cali", "--");
-            setText("temperature", "--");
-            setText("weather", "--");
             return;
         }
 
-        const latest = allRecords[allRecords.length - 1];
-
-        setText("owl-count", latest.count + " 🦅");
-        setText("adult-owl-count", isNaN(latest.confidence) ? "--" : latest.confidence + "%");
-        setText("temperature", isNaN(latest.temperature) ? "--" : latest.temperature.toFixed(1) + "°F");
-        setText("weather", latest.weather || "--");
-        setText("updated", "Orange: " + formatTime(latest.time, latest.label));
-        setText("updated-cali", "California: " + formatTime(latest.submitted));
+        updateCards();
     } catch (error) {
         console.error("Error loading spreadsheet:", error);
         setText("owl-count", "Error");
         setText("adult-owl-count", "Error");
-        setText("updated", "Error");
-        setText("updated-cali", "Error");
+        setText("updated-local", "Error");
         setText("temperature", "Error");
         setText("weather", "Error");
         return;
     }
 
-    // Charts are separate so a chart problem never blanks the cards above
+    // Charts are separate so a chart problem never blanks the cards
     try {
         createCharts(allRecords);
     } catch (error) {
@@ -180,8 +167,34 @@ async function loadData() {
     }
 }
 
-// Turn records into {x, y} points; inserts a null point wherever data is missing
-// so Chart.js draws a gap instead of connecting across it
+function updateCards() {
+    const latest = allRecords[allRecords.length - 1];
+
+    setText("owl-count", latest.occupied ? "Occupied 🦉" : "Unoccupied");
+
+    let activity = "In the box now";
+    if (!latest.occupied) {
+        const lastOcc = [...allRecords].reverse().find(r => r.occupied);
+        activity = lastOcc
+            ? "Last seen " + formatDuration(latest.time - lastOcc.time) + " before the latest reading"
+            : "No owl seen yet";
+    }
+    setText("adult-owl-count", activity);
+
+    setText("updated-local", LOCAL_LABEL + ": " + formatTime(latest.time));
+    setText("updated-cali", CALI_LABEL + ": " + formatTime(latest.submitted));
+
+    setText("temperature", isNaN(latest.temperature) ? "--" : latest.temperature.toFixed(1) + TEMP_UNIT);
+    setText("weather", latest.weather || "--");
+
+    const raining = latest.weather.toLowerCase().includes("rain");
+    setText(
+        "rain-status",
+        (raining ? "☔ Raining" : "☀️ Not raining") + " — " + (latest.occupied ? "Owl in box" : "Box unoccupied")
+    );
+}
+
+// {x, y} points; inserts a null point wherever data is missing so Chart.js draws a gap
 function buildSeries(records, valueFn) {
     const points = [];
     records.forEach((rec, i) => {
@@ -197,7 +210,6 @@ function buildSeries(records, valueFn) {
     return points;
 }
 
-// Shared x-axis: a real time axis in Orange time
 function timeScale(start, end, unit) {
     return {
         type: "time",
@@ -206,20 +218,10 @@ function timeScale(start, end, unit) {
         time: {
             unit: unit,
             tooltipFormat: "MMM d, h:mm a",
-            displayFormats: {
-                hour: "h a",
-                day: "EEE MMM d"
-            }
+            displayFormats: { hour: "h a", day: "EEE MMM d" }
         },
-        ticks: {
-            maxTicksLimit: 8,
-            autoSkip: true,
-            maxRotation: 0
-        },
-        title: {
-            display: true,
-            text: "Time (Orange, AUS)"
-        }
+        ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0 },
+        title: { display: true, text: "Time (" + LOCAL_LABEL + ")" }
     };
 }
 
@@ -229,30 +231,25 @@ function createCharts(records) {
         return;
     }
 
-    // Window anchored to the newest reading (not "now"), so the timezone gap
-    // between the camera and the viewer can't cut off the latest data
+    // Windows are anchored to the newest reading, not "now"
     const end = records[records.length - 1].time.getTime();
     const start = end - RANGES[currentRange];
     const inRange = records.filter(r => r.time.getTime() >= start);
     const showDots = currentRange === "24h";
 
-    // ---- Summary line under the falcon chart ----
-    const counts = inRange.map(r => r.count);
-    const peak = Math.max(...counts);
-    const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
-    const seenPct = Math.round((counts.filter(c => c > 0).length / counts.length) * 100);
+    // Summary line
+    const occCount = inRange.filter(r => r.occupied).length;
+    const pct = Math.round((occCount / inRange.length) * 100);
     setText(
         "chart-summary",
-        "Readings: " + counts.length + "  ·  Peak: " + peak +
-        "  ·  Average: " + avg.toFixed(1) + "  ·  Falcon(s) seen in " + seenPct + "% of readings"
+        "Readings: " + inRange.length + "  ·  Owl present in " + pct + "% of readings (" + occCount + " of " + inRange.length + ")"
     );
 
-    // Destroy old charts before redrawing
     if (owlChart) owlChart.destroy();
     if (tempChart) tempChart.destroy();
 
     // ==========================
-    // Falcon count over time (step chart)
+    // Occupancy over time (step chart: Empty = 0, Occupied = 1)
     // ==========================
     const owlCanvas = document.getElementById("owlChart");
     if (owlCanvas) {
@@ -261,14 +258,12 @@ function createCharts(records) {
             data: {
                 datasets: [
                     {
-                        label: "Falcon count",
-                        data: buildSeries(inRange, r => r.count),
+                        label: "Occupancy",
+                        data: buildSeries(inRange, r => (r.occupied ? 1 : 0)),
                         yAxisID: "y",
-                        // 'middle' = the count changes halfway between two readings,
-                        // since we only know it changed sometime in that 30-minute window
                         stepped: "middle",
-                        borderColor: "#2f6fed",
-                        backgroundColor: "rgba(47, 111, 237, 0.15)",
+                        borderColor: "#dc2626",
+                        backgroundColor: "rgba(220, 38, 38, 0.15)",
                         borderWidth: 2,
                         fill: true,
                         pointRadius: showDots ? 3 : 0,
@@ -276,7 +271,7 @@ function createCharts(records) {
                         spanGaps: false
                     },
                     {
-                        // Click "Confidence" in the legend to show/hide this line
+                        // Click "Confidence" in the legend to show/hide
                         label: "Confidence (%)",
                         data: buildSeries(inRange, r => (isNaN(r.confidence) ? null : r.confidence)),
                         yAxisID: "y2",
@@ -297,8 +292,8 @@ function createCharts(records) {
                     title: {
                         display: true,
                         text: currentRange === "24h"
-                            ? "Falcons Detected - Last 24 Hours"
-                            : "Falcons Detected - Last 7 Days"
+                            ? "Owl Box Occupancy - Last 24 Hours"
+                            : "Owl Box Occupancy - Last 7 Days"
                     },
                     tooltip: {
                         callbacks: {
@@ -306,7 +301,7 @@ function createCharts(records) {
                                 if (ctx.parsed.y === null) return "";
                                 return ctx.dataset.yAxisID === "y2"
                                     ? "Confidence: " + ctx.parsed.y + "%"
-                                    : "Falcons: " + ctx.parsed.y;
+                                    : (ctx.parsed.y === 1 ? "Occupied" : "Empty");
                             }
                         }
                     }
@@ -314,10 +309,13 @@ function createCharts(records) {
                 scales: {
                     x: timeScale(start, end, currentRange === "24h" ? "hour" : "day"),
                     y: {
-                        beginAtZero: true,
-                        suggestedMax: Math.max(1, peak) + 1,
-                        ticks: { stepSize: 1, precision: 0 },
-                        title: { display: true, text: "Falcons detected" }
+                        min: 0,
+                        max: 1,
+                        ticks: {
+                            stepSize: 1,
+                            callback: v => (v === 1 ? "Occupied" : v === 0 ? "Empty" : "")
+                        },
+                        title: { display: true, text: "Box status" }
                     },
                     y2: {
                         display: "auto",
@@ -333,7 +331,7 @@ function createCharts(records) {
     }
 
     // ==========================
-    // Temperature over time (always the last 3 days)
+    // Temperature (always the last 3 days)
     // ==========================
     const tempStart = end - TEMP_WINDOW_MS;
     const tempInRange = records.filter(r => r.time.getTime() >= tempStart);
@@ -343,7 +341,7 @@ function createCharts(records) {
             type: "line",
             data: {
                 datasets: [{
-                    label: "Temperature (°F)",
+                    label: "Temperature (" + TEMP_UNIT + ")",
                     data: buildSeries(tempInRange, r => (isNaN(r.temperature) ? null : r.temperature)),
                     borderColor: "#e4572e",
                     backgroundColor: "rgba(228, 87, 46, 0.12)",
@@ -359,15 +357,13 @@ function createCharts(records) {
                 plugins: {
                     tooltip: {
                         callbacks: {
-                            label: ctx => (ctx.parsed.y === null ? "" : ctx.parsed.y.toFixed(1) + "°F")
+                            label: ctx => (ctx.parsed.y === null ? "" : ctx.parsed.y.toFixed(1) + TEMP_UNIT)
                         }
                     }
                 },
                 scales: {
                     x: timeScale(tempStart, end, "day"),
-                    y: {
-                        title: { display: true, text: "°F" }
-                    }
+                    y: { title: { display: true, text: TEMP_UNIT } }
                 }
             }
         });
@@ -400,27 +396,20 @@ document.querySelectorAll(".range-btn").forEach(btn => {
 // ==========================
 const shareBtn = document.getElementById("nativeShareBtn");
 
-// Hide the button if the browser doesn't support native sharing
 if (shareBtn && !navigator.share) {
     shareBtn.style.display = "none";
 }
 
-// Trigger the native device share menu when clicked
 if (shareBtn) {
     shareBtn.addEventListener("click", async () => {
         try {
-            await navigator.share({
-                title: document.title,
-                url: window.location.href
-            });
+            await navigator.share({ title: document.title, url: window.location.href });
         } catch (err) {
             console.log("Share canceled or failed:", err);
         }
     });
 }
 
-// Initial load
+// Initial load + refresh
 loadData();
-
-// Refresh every 5 minutes
-setInterval(loadData, REFRESH_MS);;
+setInterval(loadData, REFRESH_MS);
