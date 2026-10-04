@@ -275,7 +275,7 @@ function createCharts(records) {
                         label: "Confidence (%)",
                         data: buildSeries(inRange, r => (isNaN(r.confidence) ? null : r.confidence)),
                         yAxisID: "y2",
-                        hidden: true,
+                        hidden: false,
                         borderColor: "rgba(230, 126, 34, 0.85)",
                         borderDash: [5, 4],
                         borderWidth: 1.5,
