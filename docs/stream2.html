@@ -13,6 +13,40 @@
     <!-- Chart.js + date adapter (needed for the time axis). Order matters. -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+    <!-- Small additions for the new time line and chart controls (safe to move into style.css) -->
+    <style>
+        .card p.sub-time {
+            font-size: 0.95rem;
+            opacity: 0.75;
+            margin-top: 4px;
+        }
+        .range-toggle {
+            display: flex;
+            gap: 8px;
+            margin: 8px 0 12px;
+            flex-wrap: wrap;
+        }
+        .range-btn {
+            padding: 6px 14px;
+            border: 1px solid #888;
+            border-radius: 999px;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .range-btn.active {
+            background: #2f6fed;
+            border-color: #2f6fed;
+            color: #fff;
+        }
+        .card p.chart-summary {
+            font-size: 0.85rem;
+            opacity: 0.75;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 
 <body>
