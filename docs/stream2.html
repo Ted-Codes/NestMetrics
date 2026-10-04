@@ -10,8 +10,9 @@
     <link rel="icon" type="image/png" href="owl-favicon-32x32.png">
     <link rel="stylesheet" href="style.css">
 
-    <!-- Chart.js (pinned version so updates can't break the graphs) -->
+    <!-- Chart.js + date adapter (needed for the time axis). Order matters. -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
 
 <body>
@@ -108,12 +109,13 @@
         <section class="card">
             <h2>🦉 Owl Box Occupancy</h2>
 
-            <nav class="stream-nav">
-                <button type="button" class="stream-btn active" data-zone="local">UK time</button>
-                <button type="button" class="stream-btn" data-zone="cali">California time</button>
-            </nav>
+            <div>
+                <button type="button" class="range-btn active" data-range="24h">24 hours</button>
+                <button type="button" class="range-btn" data-range="7d">7 days</button>
+            </div>
 
             <canvas id="owlChart"></canvas>
+            <p id="chart-summary"></p>
         </section>
 
         <!-- TEMPERATURE GRAPH -->
