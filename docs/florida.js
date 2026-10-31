@@ -3,7 +3,7 @@
 // ==========================
 
 const DEFAULT_SHEET_URL =
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQo_YzIL-rZz8yTUNvNFqOeBhKmf-UuBfqnQMPluSy4n3fOwOXmHyUVwDCYslV22qpNYnTrre76UHWM/pub?output=csv";
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6x_ioArLKgcF-ttqeCGhHT0-vJyG6v5VmFTu_-YnHfCInuimelSYhuPYzHvVilWWj3H8x9XU2KlbJ/pub?output=csv";
 const sheetURL = document.body.dataset.sheet || DEFAULT_SHEET_URL;
 
 // ---------- CONFIG ----------
