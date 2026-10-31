@@ -101,44 +101,28 @@
         </details>
 
 
-        <!-- Current Data -->
+        <!-- CURRENT DATA -->
         <section class="dashboard-grid">
 
             <div class="card">
-                <h2>🪺 Estimated Falcon Count</h2>
+                <h2>🪹 Nest Box Status</h2>
                 <p id="owl-count">Loading...</p>
             </div>
 
             <div class="card">
-                <h2>🤖 Confidence Percentage</h2>
+                <h2>🦉 Owl Activity</h2>
                 <p id="adult-owl-count">Loading...</p>
             </div>
 
             <div class="card">
                 <h2>🕒 Last Updated</h2>
-                <p id="updated">Loading...</p>
+                <p id="updated-local">Loading...</p>
                 <p id="updated-cali" class="sub-time">Loading...</p>
             </div>
 
         </section>
 
-        <!-- Falcon Graph -->
-        <section class="card">
-            <h2>📈 Falcon Activity</h2>
-
-            <div class="range-toggle">
-                <button type="button" class="range-btn active" data-range="24h">Last 24 hours</button>
-                <button type="button" class="range-btn" data-range="7d">Last 7 days</button>
-            </div>
-
-            <canvas id="owlChart"></canvas>
-
-            <p id="chart-summary" class="chart-summary"></p>
-            <p class="chart-summary">Each reading is taken every 30 minutes. Gaps in the line mean no data was recorded.</p>
-            <p>Confidence percentage(%) is how sure an AI is that its response is correct.</p>
-        </section>
-
-        <!-- Temperature & Weather -->
+        <!-- WEATHER -->
         <section class="weather-dashboard-grid">
 
             <div class="card">
@@ -151,26 +135,44 @@
                 <p id="weather">Loading...</p>
             </div>
 
+            <div class="card">
+                <h2>🌧️ Nest Conditions</h2>
+                <p id="rain-status">Loading...</p>
+            </div>
+
         </section>
 
-        <!-- Temp Graph -->
+        <!-- OCCUPANCY GRAPH -->
         <section class="card">
-            <h2>🌡 Temperature History (Last 3 Days)</h2>
+            <h2>🦉 Owl Box Occupancy</h2>
+
+            <div>
+                <button type="button" class="range-btn active" data-range="24h">24 hours</button>
+                <button type="button" class="range-btn" data-range="7d">7 days</button>
+            </div>
+
+            <canvas id="owlChart"></canvas>
+            <p id="chart-summary"></p>
+        </section>
+
+        <!-- TEMPERATURE GRAPH -->
+        <section class="card">
+            <h2>🌡 Temperature (Last 3 Days)</h2>
             <canvas id="tempChart"></canvas>
-            <p class="chart-summary">Shows the last 3 days of readings, in Orange time.</p>
         </section>
 
     </main>
 
-
     <footer>
         <p>Livestream embedded from YouTube</p>
-        <p>NestMetrics Software, Analytics, and Website © 2026 Ted Brzustowicz. All Rights Reserved</p>
+        <p>
+            NestMetrics Software, Analytics, and Website
+            © 2026 Ted Brzustowicz. All Rights Reserved
+        </p>
     </footer>
 
-
-    <!-- Website Logic -->
-    <script src="script.js"></script>
+    <script src="peaks.js"></script>
 
 </body>
+
 </html>
