@@ -7,7 +7,7 @@ const DEFAULT_SHEET_URL =
 const sheetURL = document.body.dataset.sheet || DEFAULT_SHEET_URL;
 
 // ---------- CONFIG ----------
-const LOCAL_LABEL = "UK";
+const LOCAL_LABEL = "Florida";
 const CALI_LABEL = "California";
 const TEMP_UNIT = "°F";
 
