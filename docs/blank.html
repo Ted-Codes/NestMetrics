@@ -1,1 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nest Metrics</title>
+    <link rel="icon" type="image/png" href="owl-favicon-32x32.png">
 
+    <!-- Styling -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Chart.js for graphs, plus the date adapter that powers the time axis (must load after Chart.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+    <!-- Small additions for the new time line and chart controls (safe to move into style.css) -->
+    <style>
+        .card p.sub-time {
+            font-size: 0.95rem;
+            opacity: 0.75;
+            margin-top: 4px;
+        }
+        .range-toggle {
+            display: flex;
+            gap: 8px;
+            margin: 8px 0 12px;
+            flex-wrap: wrap;
+        }
+        .range-btn {
+            padding: 6px 14px;
+            border: 1px solid #888;
+            border-radius: 999px;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .range-btn.active {
+            background: #2f6fed;
+            border-color: #2f6fed;
+            color: #fff;
+        }
+        .card p.chart-summary {
+            font-size: 0.85rem;
+            opacity: 0.75;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<!-- Data source for this page (script.js falls back to the default sheet if this is removed) -->
+<body data-sheet="https://docs.google.com/spreadsheets/d/e/2PACX-1vSIDCT6OHYQGa_YHxcmMhp1IZuUfJzBqbV5n1MlZqvBzfM4zWyvd4jyo5Gi2vPgoGeCVXbmRwOU0jnx/pub?output=csv">
+
+    <header>
+        <h1>NestMetrics 🪹</h1>
+        <p>Smart Bird &amp; Owl Box Analytics | Live Wildlife Monitoring Dashboard</p>
+        <button id="nativeShareBtn" class="share-button">🔗 Share 🔗</button>
+    </header>
+
+
+    <main>
+
+        <nav class="stream-nav">
+            <a href="index.html" class="stream-btn active">Stream 1 | Orange, AUS</a>
+            <a href="stream2.html" class="stream-btn">Stream 2 | Derbyshire, UK</a>
+            <a href="florida_mating.html" class="stream-btn">Stream 3 | Florida 1, USA</a>
+            <a href="florida.html" class="stream-btn">Stream 4 | Floirda 2, USA</a>
+            <a href="stream3.html" class="stream-btn">Stream 5 | Livermore, USA</a>
+            <a href="about.html" class="stream-btn">About</a>
+        </nav>
+
+        <!-- Live Stream -->
+        <section class="card">
+            <h2>🎥 Livestream from Charles Sturt University, Orange, AUS</h2>
+            <p>Please support the original YouTube channel by watching and subscribing.</p>
+
+            <div class="video-container">
+                <iframe
+                    width="560"
+                    height="315"
+                    src="https://www.youtube.com/embed/gnF7_gRHHMQ?autoplay=1&mute=1"
+                    title="YouTube video player"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
+                    allowfullscreen>
+                </iframe>
+            </div>
+            <p></p>
+            <a href="https://science-health.csu.edu.au/falconcam">Charles Sturt University Website</a>
+            <p>NestMetrics analyzes barn bird &amp; falcon livestreams using computer vision to measure activity and behavior patterns over time.</p>
+            <p>Birds may overlap or be partially obscured, so the AI may have an inaccurate count of the birds.</p>
+        </section>
+
+        <details>
+            <summary>What are the habits of peregrine falcons? (Click here for info)</summary>
+            <p>The peregrine falcon is a powerful bird of prey found on every continent except Antarctica, 
+                famously recognized as the fastest animal on Earth with diving speeds exceeding 320 km/h (200 mph).
+                They primarily hunt other birds mid-air and have adapted remarkably well to urban environments, using skyscrapers as artificial cliffs for nesting after a historic recovery from near-extinction in the late 20th century. 
+                They mate for life, and while the mother sits on the eggs, the father hunts. 
+                He brings prey back to the nest to feed her so she rarely has to leave. 
+                However, the father will also take short turns sitting on the eggs so the mother can stretch her wings, preen, and eat.</p>
+        </details>
+
+
+        <!-- Current Data -->
+        <section class="dashboard-grid">
+
+            <div class="card">
+                <h2>🪺 Estimated Falcon Count</h2>
+                <p id="owl-count">Loading...</p>
+            </div>
+
+            <div class="card">
+                <h2>🤖 Confidence Percentage</h2>
+                <p id="adult-owl-count">Loading...</p>
+            </div>
+
+            <div class="card">
+                <h2>🕒 Last Updated</h2>
+                <p id="updated">Loading...</p>
+                <p id="updated-cali" class="sub-time">Loading...</p>
+            </div>
+
+        </section>
+
+        <!-- Falcon Graph -->
+        <section class="card">
+            <h2>📈 Falcon Activity</h2>
+
+            <div class="range-toggle">
+                <button type="button" class="range-btn active" data-range="24h">Last 24 hours</button>
+                <button type="button" class="range-btn" data-range="7d">Last 7 days</button>
+            </div>
+
+            <canvas id="owlChart"></canvas>
+
+            <p id="chart-summary" class="chart-summary"></p>
+            <p class="chart-summary">Each reading is taken every 30 minutes. Gaps in the line mean no data was recorded.</p>
+            <p>Confidence percentage(%) is how sure an AI is that its response is correct.</p>
+        </section>
+
+        <!-- Temperature & Weather -->
+        <section class="weather-dashboard-grid">
+
+            <div class="card">
+                <h2>🌡 Current Temperature</h2>
+                <p id="temperature">Loading...</p>
+            </div>
+
+            <div class="card">
+                <h2>🌦️ Current Weather</h2>
+                <p id="weather">Loading...</p>
+            </div>
+
+        </section>
+
+        <!-- Temp Graph -->
+        <section class="card">
+            <h2>🌡 Temperature History (Last 3 Days)</h2>
+            <canvas id="tempChart"></canvas>
+            <p class="chart-summary">Shows the last 3 days of readings, in Orange time.</p>
+        </section>
+
+    </main>
+
+
+    <footer>
+        <p>Livestream embedded from YouTube</p>
+        <p>NestMetrics Software, Analytics, and Website © 2026 Ted Brzustowicz. All Rights Reserved</p>
+    </footer>
+
+
+    <!-- Website Logic -->
+    <script src="script.js"></script>
+
+</body>
+</html>
