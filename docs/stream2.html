@@ -1,18 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Nest Metrics</title>
-
     <link rel="icon" type="image/png" href="owl-favicon-32x32.png">
+
+    <!-- Styling -->
     <link rel="stylesheet" href="style.css">
 
-    <!-- Chart.js + date adapter (needed for the time axis). Order matters. -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- Chart.js for graphs, plus the date adapter that powers the time axis (must load after Chart.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <!-- Small additions for the new time line and chart controls (safe to move into style.css) -->
     <style>
@@ -49,67 +48,58 @@
     </style>
 </head>
 
-<body>
+<!-- Data source for this page (script.js falls back to the default sheet if this is removed) -->
+<body data-sheet="https://docs.google.com/spreadsheets/d/e/2PACX-1vQo_YzIL-rZz8yTUNvNFqOeBhKmf-UuBfqnQMPluSy4n3fOwOXmHyUVwDCYslV22qpNYnTrre76UHWM/pub?output=csv">
 
     <header>
         <h1>NestMetrics 🪹</h1>
-        <p>Smart Bird & Owl Box Analytics | Live Wildlife Monitoring Dashboard</p>
-
-        <button id="nativeShareBtn" class="share-button">
-            🔗 Share 🔗
-        </button>
+        <p>Smart Bird &amp; Owl Box Analytics | Live Wildlife Monitoring Dashboard</p>
+        <button id="nativeShareBtn" class="share-button">🔗 Share 🔗</button>
     </header>
+
 
     <main>
 
         <nav class="stream-nav">
             <a href="index.html" class="stream-btn">Stream 1 | Orange, AUS</a>
-            <a href="stream2.html" class="stream-btn active">Stream 2 | Derbyshire, UK</a>
-            <a href="florida_mating.html" class="stream-btn">Stream 3 | Florida 1, USA</a>
-            <a href="florida.html" class="stream-btn">Stream 4 | Floirda 2, USA</a>
+            <a href="stream2.html" class="stream-btn">Stream 2 | Derbyshire, UK</a>
+            <a href="florida_mating.html" class="stream-btn active">Stream 3 | Florida 1, USA</a>
+            <a href="florida.html" class="stream-btn">Stream 4 | Florida 2, USA</a>
             <a href="stream3.html" class="stream-btn">Stream 5 | Livermore, USA</a>
             <a href="about.html" class="stream-btn">About</a>
         </nav>
 
-        <!-- LIVE STREAM -->
+        <!-- Live Stream -->
         <section class="card">
-            <h2>🎥 Livestream from Barn Owl Live, Derbyshire, UK</h2>
+            <h2>🎥 Livestream from Florida University #1, Florida, USA</h2>
+            <p>Please support the original YouTube channel by watching and subscribing.</p>
 
             <div class="video-container">
                 <iframe
-                    src="https://www.youtube.com/embed/AorGWrn-vx8?autoplay=1&mute=1"
-                    title="Barn Owl Live Stream"
-                    allow="autoplay; encrypted-media; picture-in-picture"
+                    width="560"
+                    height="315"
+                    src="https://www.youtube.com/embed/RbPzFQiZ-Sc?autoplay=1&mute=1"
+                    title="YouTube video player"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerpolicy="strict-origin-when-cross-origin"
                     allowfullscreen>
                 </iframe>
             </div>
-
             <p></p>
-            <a href="https://barnowl.live/">Barn Owl Live's Website</a>
-
-            <p>
-                NestMetrics analyzes barn owl livestreams using computer vision
-                to monitor whether the nest box is occupied and track
-                environmental conditions over time.
-            </p>
-
-            <p>
-                Occupancy is determined by AI analysis of the livestream and may
-                occasionally be inaccurate if an owl is obscured or outside the
-                camera's view.
-            </p>
-            
-            
+            <a href="https://ko-fi.com/chartergroupbirdcams">Support Charter Group Birdcams</a>
+            <p>NestMetrics analyzes barn bird &amp; falcon livestreams using computer vision to measure activity and behavior patterns over time.</p>
+            <p>Birds may overlap or be partially obscured, so the AI may have an inaccurate count of the birds.</p>
         </section>
 
         <details>
             <summary>What are the habits of barn owls? (Click here for info)</summary>
             <p>The barn owl is a silent hunter found on every continent except Antarctica, famously recognized for extraordinary hearing that allows it to strike prey in total darkness.
                 They primarily hunt small mammals like mice and voles on the ground and have adapted remarkably well to agricultural and human environments, using old barns, hollow trees, and man-made nest boxes as safe havens for nesting.
-                They mate for life, and while the mother sits on the eggs, the father hunts.
-                He brings rodents back to the nest to feed her so she rarely has to leave.
+                They mate for life, and while the mother sits on the eggs, the father hunts. He brings rodents back to the nest to feed her so she rarely has to leave. 
                 However, unlike other birds, the mother barn owl stays almost continuously on the eggs during incubation while the father handles all the provisioning outside.</p>
         </details>
+
 
         <!-- CURRENT DATA -->
         <section class="dashboard-grid">
@@ -181,7 +171,7 @@
         </p>
     </footer>
 
-    <script src="peaks.js"></script>
+    <script src="florida_mating.js"></script>
 
 </body>
 
